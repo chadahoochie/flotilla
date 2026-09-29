@@ -1,5 +1,12 @@
 //! Storage subsystem for Flotilla Raft consensus.
 
+pub mod log_slot;
 pub mod ring_buffer;
+pub mod ring_buffer_log_storage;
+pub mod storage_error;
 
-pub use ring_buffer::{LogSlot, RingBufferLogStorage, StorageError};
+pub use log_slot::LogSlot;
+pub use ring_buffer_log_storage::{
+    compute_slot_index, is_buffer_full, is_index_in_retained_range, RingBufferLogStorage,
+};
+pub use storage_error::StorageError;

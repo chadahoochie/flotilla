@@ -21,7 +21,7 @@ pub fn calculate_quorum_commit_index(match_indices: &mut [LogIndex]) -> LogIndex
 ///
 /// Invariants enforced:
 /// 1. $N > \text{current\_commit}$
-/// 2. A majority of $\text{match\_index}[i] \ge N$
+/// 2. A majority of $\text{match\_index}\[i\] \ge N$
 /// 3. The entry at $N$ was written during the leader's current term ($\text{term}(N) == \text{current\_term}$)
 pub fn evaluate_commit_advancement<F>(
     match_indices: &[LogIndex],
