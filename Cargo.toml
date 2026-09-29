@@ -1,0 +1,25 @@
+[package]
+name = "flotilla"
+version = "0.1.0"
+edition = "2024"
+authors = ["Flotilla Contributors"]
+description = "High-Throughput, Low-Latency Sans-I/O Raft in Safe Rust (Rust 1.98+ / Edition 2024)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+zerocopy = { version = "0.8", features = ["derive"] }
+crc32fast = "1.4"
+parking_lot = "0.12"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
+[[bench]]
+name = "raft_benchmarks"
+harness = false
