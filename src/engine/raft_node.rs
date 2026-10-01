@@ -1,7 +1,8 @@
 use super::engine_error::EngineError;
 use super::outbound_message::OutboundMessage;
 use super::packets::{
-    create_append_entries_packet, create_append_entries_reply_packet, create_request_vote_packet,
+    create_append_entries_packet, create_append_entries_reply_packet,
+    create_client_proposal_reply_packet, create_request_vote_packet,
     create_request_vote_reply_packet,
 };
 use super::raft_config::RaftConfig;
@@ -327,6 +328,41 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
                     }
                 }
             }
+
+            MsgType::ClientProposal => {
+                let reply_packet = if self.role() == Role::Leader {
+                    let new_index = self.storage.append_entry(self.current_term(), payload)?;
+                    actions.extend(self.broadcast_heartbeats());
+                    create_client_proposal_reply_packet(
+                        self.election.config.node_id,
+                        sender,
+                        self.current_term(),
+                        true,
+                        new_index,
+                        self.election.config.node_id,
+                    )?
+                } else {
+                    let leader_id = if self.election.voted_for != NodeId::NONE {
+                        self.election.voted_for
+                    } else {
+                        NodeId(0)
+                    };
+                    create_client_proposal_reply_packet(
+                        self.election.config.node_id,
+                        sender,
+                        self.current_term(),
+                        false,
+                        LogIndex::ZERO,
+                        leader_id,
+                    )?
+                };
+                actions.push(OutboundMessage::SendPacket {
+                    to: sender,
+                    packet: reply_packet,
+                });
+            }
+
+            MsgType::ClientProposalReply => {}
 
             MsgType::Unknown | MsgType::HeartbeatArgs | MsgType::HeartbeatReply => {}
         }

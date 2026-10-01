@@ -1,6 +1,6 @@
 # Flotilla
 
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.98%2B%20(Edition%202024)-orange.svg)](Cargo.toml)
 [![Sans-I/O](https://img.shields.io/badge/architecture-sans--I%2FO-brightgreen.svg)](CODING_STANDARDS.md#5-sans-io-consensus-model)
 [![Zero-Allocation](https://img.shields.io/badge/hot--path-zero--allocation-success.svg)](CODING_STANDARDS.md#2-zero-allocation-hot-path-standards)
@@ -210,6 +210,7 @@ flotilla/
 ├── CODING_STANDARDS.md         # Comprehensive standards & architectural invariants
 ├── README.md                   # Primary developer guide & best practices
 ├── Cargo.toml                  # Dependencies, feature flags, profile settings
+├── LICENSE                     # MIT License
 ├── src/
 │   ├── lib.rs                  # Library entrypoint and public module exports
 │   ├── commit.rs               # Standalone quorum median commit evaluator
@@ -247,8 +248,6 @@ flotilla/
 
 ## 📄 License
 
-Licensed under either of:
-- Apache License, Version 2.0 ([LICENSE-APACHE](http://www.apache.org/licenses/LICENSE-2.0))
-- MIT license ([LICENSE-MIT](http://opensource.org/licenses/MIT))
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-at your option.
+Copyright (c) 2026 Chad Bauers.

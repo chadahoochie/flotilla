@@ -783,8 +783,12 @@ fn test_types_and_framing() {
     assert_eq!(MsgType::from_u16(4), Some(MsgType::AppendEntriesReply));
     assert_eq!(MsgType::from_u16(5), Some(MsgType::HeartbeatArgs));
     assert_eq!(MsgType::from_u16(6), Some(MsgType::HeartbeatReply));
-    assert_eq!(MsgType::from_u16(7), None);
+    assert_eq!(MsgType::from_u16(7), Some(MsgType::ClientProposal));
+    assert_eq!(MsgType::from_u16(8), Some(MsgType::ClientProposalReply));
+    assert_eq!(MsgType::from_u16(9), None);
     assert_eq!(MsgType::RequestVoteArgs.to_u16(), 1);
+    assert_eq!(MsgType::ClientProposal.to_u16(), 7);
+    assert_eq!(MsgType::ClientProposalReply.to_u16(), 8);
 }
 
 #[test]
@@ -987,4 +991,157 @@ fn test_replication_evaluator_remaining_branches() {
     let res = evaluate_follower_append_entries(&hdr_no_commit, &[], &mut storage, &mut commit);
     assert!(matches!(res, FollowerAppendResult::Success { .. }));
     assert_eq!(commit, LogIndex(2));
+}
+
+#[test]
+fn test_client_and_server_error_and_config_branches() {
+    use flotilla::client::{ClientConfig, ClientError, ProposalResult};
+    use flotilla::server::{ServerConfig, ServerError};
+    use std::io;
+
+    // ClientError variants and Display
+    let e_timeout = ClientError::Timeout;
+    assert_eq!(format!("{e_timeout}"), "Operation timed out");
+
+    let io_err = io::Error::new(io::ErrorKind::ConnectionRefused, "refused");
+    let e_io: ClientError = io_err.into();
+    assert!(format!("{e_io}").contains("I/O error"));
+
+    let codec_err = CodecError::InvalidMagic(0x1234);
+    let e_codec: ClientError = codec_err.into();
+    assert!(format!("{e_codec}").contains("Codec error"));
+
+    let e_not_leader = ClientError::NotLeader {
+        leader_id: Some(NodeId(2)),
+    };
+    assert!(format!("{e_not_leader}").contains("Node is not leader, leader is: Some(NodeId(2))"));
+
+    let e_no_endpoints = ClientError::NoEndpoints;
+    assert_eq!(format!("{e_no_endpoints}"), "No target endpoints provided");
+
+    let e_conn = ClientError::ConnectionFailed("bad ip".into());
+    assert_eq!(format!("{e_conn}"), "Connection failed: bad ip");
+
+    let e_rpc = ClientError::RpcFailed("rpc err".into());
+    assert_eq!(format!("{e_rpc}"), "RPC failed: rpc err");
+
+    // ClientError std::error::Error trait
+    use std::error::Error;
+    assert!(e_timeout.source().is_none());
+
+    // ProposalResult constructors
+    let pr_ok = ProposalResult::success(LogIndex(10), Term(2), NodeId(1));
+    assert!(pr_ok.is_success());
+    assert_eq!(pr_ok.index, LogIndex(10));
+    assert_eq!(pr_ok.term, Term(2));
+    assert_eq!(pr_ok.leader_id, Some(NodeId(1)));
+
+    let pr_fail = ProposalResult::failure(Some(NodeId(3)));
+    assert!(!pr_fail.is_success());
+    assert_eq!(pr_fail.index, LogIndex::ZERO);
+    assert_eq!(pr_fail.leader_id, Some(NodeId(3)));
+
+    // ClientConfig builders
+    let mut cfg = ClientConfig::default();
+    assert_eq!(cfg.retry_attempts, 3);
+    cfg = ClientConfig::new(vec!["127.0.0.1:8000".into()]);
+    cfg = cfg.with_timeout(std::time::Duration::from_millis(100));
+    cfg = cfg.with_retries(5);
+    assert_eq!(cfg.retry_attempts, 5);
+    assert_eq!(cfg.timeout, std::time::Duration::from_millis(100));
+    assert_eq!(cfg.endpoints, vec!["127.0.0.1:8000"]);
+
+    // ServerError variants and Display
+    let s_io: ServerError = io::Error::new(io::ErrorKind::AddrInUse, "in use").into();
+    assert!(format!("{s_io}").contains("Server I/O error"));
+
+    let s_bind = ServerError::BindFailed("could not bind".into());
+    assert_eq!(format!("{s_bind}"), "Failed to bind server: could not bind");
+
+    let s_closed = ServerError::Closed;
+    assert_eq!(format!("{s_closed}"), "Server listener closed");
+    assert!(s_closed.source().is_none());
+
+    // ServerConfig
+    let s_addr: std::net::SocketAddr = "127.0.0.1:9099".parse().unwrap();
+    let sc = ServerConfig::new(s_addr).with_max_connections(256);
+    assert_eq!(sc.bind_addr, s_addr);
+    assert_eq!(sc.max_connections, 256);
+}
+
+#[cfg(feature = "client-tcp")]
+#[tokio::test]
+async fn test_tcp_framing_edge_cases() {
+    use flotilla::client::tcp::framing::{read_packet_frame, write_packet_frame};
+    use flotilla::codec::{HEADER_SIZE, MAGIC, PacketHeader};
+    use zerocopy::IntoBytes;
+
+    // Buffer smaller than HEADER_SIZE
+    let mut small_buf = [0u8; 10];
+    let mut empty_stream = &[][..];
+    let res = read_packet_frame(&mut empty_stream, &mut small_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+    // Invalid magic bytes
+    let invalid_hdr = PacketHeader {
+        magic: 0xDEADBEEF,
+        version: 1,
+        msg_type: 0,
+        sender_id: NodeId(0),
+        receiver_id: NodeId(0),
+        term: Term::ZERO,
+        checksum: 0,
+        payload_len: 4,
+    };
+    let mut hdr_bytes = invalid_hdr.as_bytes().to_vec();
+    hdr_bytes.extend_from_slice(&[1, 2, 3, 4]);
+    let mut stream = &hdr_bytes[..];
+    let mut full_buf = [0u8; 64];
+    let res = read_packet_frame(&mut stream, &mut full_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+
+    // Payload exceeding destination buffer
+    let big_payload_hdr = PacketHeader {
+        magic: MAGIC,
+        version: 1,
+        msg_type: 0,
+        sender_id: NodeId(0),
+        receiver_id: NodeId(0),
+        term: Term::ZERO,
+        checksum: 0,
+        payload_len: 1000,
+    };
+    let mut stream2 = big_payload_hdr.as_bytes();
+    let mut limited_buf = [0u8; 128];
+    let res = read_packet_frame(&mut stream2, &mut limited_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+
+    // Successful write and read
+    let valid_hdr = PacketHeader {
+        magic: MAGIC,
+        version: 1,
+        msg_type: 7,
+        sender_id: NodeId(1),
+        receiver_id: NodeId(2),
+        term: Term(1),
+        checksum: crc32fast::Hasher::new().finalize(),
+        payload_len: 4,
+    };
+    let mut packet = valid_hdr.as_bytes().to_vec();
+    packet.extend_from_slice(&[10, 20, 30, 40]);
+
+    let mut out_stream = Vec::new();
+    write_packet_frame(&mut out_stream, &packet).await.unwrap();
+    assert_eq!(out_stream, packet);
+
+    let mut in_stream = &out_stream[..];
+    let mut read_buf = [0u8; 64];
+    let n = read_packet_frame(&mut in_stream, &mut read_buf)
+        .await
+        .unwrap();
+    assert_eq!(n, HEADER_SIZE + 4);
+    assert_eq!(&read_buf[..n], &packet[..]);
 }

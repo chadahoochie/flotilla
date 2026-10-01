@@ -10,6 +10,8 @@ pub enum MsgType {
     AppendEntriesReply = 4,
     HeartbeatArgs = 5,
     HeartbeatReply = 6,
+    ClientProposal = 7,
+    ClientProposalReply = 8,
 }
 
 impl MsgType {
@@ -22,6 +24,8 @@ impl MsgType {
             4 => Some(Self::AppendEntriesReply),
             5 => Some(Self::HeartbeatArgs),
             6 => Some(Self::HeartbeatReply),
+            7 => Some(Self::ClientProposal),
+            8 => Some(Self::ClientProposalReply),
             _ => None,
         }
     }

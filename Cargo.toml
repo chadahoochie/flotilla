@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Flotilla Contributors"]
 description = "High-Throughput, Low-Latency Sans-I/O Raft in Safe Rust (Rust 1.98+ / Edition 2024)"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 
 [dependencies]
 zerocopy = { version = "0.8", features = ["derive"] }
@@ -13,7 +13,7 @@ parking_lot = "0.12"
 
 # Optional dependencies for Cosmos DB archival offloader
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"], optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 hmac = { version = "0.12", optional = true }
@@ -22,8 +22,28 @@ base64 = { version = "0.22", optional = true }
 chrono = { version = "0.4", features = ["serde"], optional = true }
 urlencoding = { version = "2.1", optional = true }
 
+# Optional dependencies for gRPC
+tonic = { version = "0.12", optional = true }
+prost = { version = "0.13", optional = true }
+
+[build-dependencies]
+tonic-build = { version = "0.12", optional = true }
+protoc-bin-vendored = { version = "3.2.0", optional = true }
+
 [features]
-default = []
+default = ["client-udp"]
+client-udp = []
+client-tcp = ["dep:tokio"]
+client-grpc = ["dep:tokio", "dep:tonic", "dep:prost", "dep:tonic-build", "dep:protoc-bin-vendored"]
+server-tcp = ["dep:tokio"]
+server-grpc = ["dep:tokio", "dep:tonic", "dep:prost", "dep:tonic-build", "dep:protoc-bin-vendored"]
+
+# Composite feature flags
+udp = ["client-udp"]
+tcp = ["client-tcp", "server-tcp"]
+grpc = ["client-grpc", "server-grpc"]
+full = ["udp", "tcp", "grpc", "cosmos"]
+
 cosmos = [
     "dep:reqwest",
     "dep:tokio",
@@ -38,6 +58,7 @@ cosmos = [
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [profile.release]
 opt-level = 3
