@@ -126,13 +126,15 @@ Monolithic multi-thousand-line files obscure subsystem boundaries, create merge 
 3. **Submodule Directory Organization**:
    - Subsystems are organized into dedicated folders:
      - `src/types/`: Core domain scalar value wrappers (`NodeId`, `Term`, `LogIndex`, `Role`, `HardState`).
-     - `src/message/`: Strongly typed Raft protocol wire payloads.
+     - `src/message/`: Strongly typed Raft protocol wire payloads (`RequestVoteArgs`, `AppendEntriesHeader`, `ClientProposalReply`, etc.).
      - `src/codec/`: Packet framing headers and zero-copy encoders/decoders.
-     - `src/storage/`: In-memory power-of-two circular buffer storage.
-     - `src/election/`: Randomized election timer, voting rules, and candidate state.
+     - `src/storage/`: In-memory power-of-two circular buffer storage (`RingBufferLogStorage`, `LogSlot`).
+     - `src/election/`: Randomized election timer, voting rules, and candidate state machine.
      - `src/replication/`: Follower append evaluator and peer progress tracker.
-     - `src/engine/`: Sans-I/O Raft consensus engine node, configuration, and outbound actions.
-     - `src/archive/`: Asynchronous background pipeline, sinks, and compaction offloaders.
+     - `src/engine/`: Sans-I/O Raft consensus engine node (`RaftNode`), configuration, and outbound actions.
+     - `src/client/`: Pluggable client abstractions (`FlotillaClient`, `ClientConfig`, `ClientError`, `ProposalResult`) and transports (`UdpClient`, `TcpClient`, `GrpcClient`).
+     - `src/server/`: Transport server listeners and protocol services (`ServerConfig`, `ServerError`, `UdpListener`, `TcpListener`, `GrpcService`).
+     - `src/archive/`: Asynchronous background pipeline, sinks (`FileArchiveSink`, `NullArchiveSink`), and compaction offloaders.
      - `src/udp/`: UDP socket driver and cluster address router.
 
 4. **Dedicated Pure Function Files**:
@@ -140,8 +142,9 @@ Monolithic multi-thousand-line files obscure subsystem boundaries, create merge 
      - [`rules.rs`](file:///home/chad/source/rust/flotilla/src/election/rules.rs): Quorum calculation and log freshness checks.
      - [`evaluator.rs`](file:///home/chad/source/rust/flotilla/src/replication/evaluator.rs): Standalone follower AppendEntries verification logic.
      - [`commit.rs`](file:///home/chad/source/rust/flotilla/src/commit.rs): Quorum median index calculation and commit advancement.
-     - [`packets.rs`](file:///home/chad/source/rust/flotilla/src/engine/packets.rs): Outbound datagram packet construction.
-     - [`framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): MTU bounds checks.
+     - [`packets.rs`](file:///home/chad/source/rust/flotilla/src/engine/packets.rs): Outbound datagram and proposal packet construction.
+     - [`udp/framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): UDP MTU bounds checks.
+     - [`client/tcp/framing.rs`](file:///home/chad/source/rust/flotilla/src/client/tcp/framing.rs): Async TCP length-prefixed frame encoding and decoding.
 
 5. **Submodule `mod.rs` & Re-exports**:
    - Submodule `mod.rs` files declare submodules (`pub mod type_name;`) and re-export them (`pub use type_name::TypeName;`) to maintain clean public APIs without deeply nested import paths.
@@ -249,19 +252,24 @@ Before submitting a Pull Request, verify that all standards are met:
 Run the full local verification pipeline:
 
 ```bash
-# 1. Run all unit, integration, and zero-allocation tests
+# 1. Run all unit, integration, and transport tests (default and all features)
 cargo test --all-targets
+cargo test --all-targets --all-features
 
 # 2. Verify zero-allocation hot paths with custom tracking allocator
 cargo test --test zero_alloc_tests
 
 # 3. Enforce structural standards (type-per-file, no private helpers)
 python3 .github/scripts/check_coding_standards.py
+cargo test --test coding_standards_tests
 
-# 4. Check for clippy warnings
-cargo clippy --all-targets -- -D warnings
+# 4. Check for clippy warnings across all features
+cargo clippy --all-targets --all-features -- -D warnings
 
-# 5. Run test coverage gate
+# 5. Verify documentation build
+cargo doc --all-features --no-deps
+
+# 6. Run test coverage gate
 cargo llvm-cov --branch --json --summary-only --output-path coverage.json
 python3 .github/scripts/check_coverage.py coverage.json --min-line 85.0 --min-branch 90.0
 ```

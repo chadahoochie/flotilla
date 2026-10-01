@@ -5,22 +5,39 @@ Flotilla is a zero-allocation, sans-I/O Raft consensus library implemented in Sa
 For the top-level repository overview, see [**`README.md`**](../README.md).  
 For the complete engineering and code quality specification, see [**`CODING_STANDARDS.md`**](../CODING_STANDARDS.md).
 
+---
+
 ## Non-Negotiable Coding Standards
+
 1. **TDD (Red -> Green -> Refactor)**: Write failing tests first. Heavily prioritize the **Refactor** step to eliminate allocations, verify cacheline alignment, enforce type-per-file, and eliminate clippy warnings.
 2. **Zero Allocation**: Constant-memory execution along all steady-state consensus hot paths using compile-time power-of-two circular buffers, `zerocopy 0.8`, and cacheline alignment (`#[repr(align(64))]`).
 3. **Type-per-File Decomposition**: Every struct, enum, and trait resides in its own dedicated, snake_case source file.
 4. **No Private Helper Methods**: Inherent `impl` blocks prohibit private methods. All logic is decomposed into crate-visible standalone pure functions or dedicated types for 100% isolated unit testability.
 
+---
+
 ## Key Features
-- **Sans-I/O Architecture**: The consensus state engine has no socket handles, file descriptors, or timer threads. It is stepped purely via in-memory events and manual ticks.
-- **Zero-Allocation Execution**: Constant-memory execution along hot paths using static circular arrays and borrowing slices.
+
+- **Sans-I/O Architecture**: The consensus state engine has no socket handles, file descriptors, or timer threads. It is stepped purely via in-memory events (`step`), proposals (`propose`), and manual ticks (`tick`).
+- **Zero-Allocation Hot Path**: Constant-memory execution along hot paths using static circular arrays and borrowed slices.
+- **Pluggable Client Transports**: Unified [`FlotillaClient`](file:///home/chad/source/rust/flotilla/src/client/flotilla_client.rs) interface supporting:
+  - UDP datagrams (`UdpClient`)
+  - Async length-prefixed TCP streams (`TcpClient`)
+  - High-performance HTTP/2 gRPC (`GrpcClient`)
+- **Server Transport Listeners**: Pluggable protocol server listeners driving shared consensus nodes:
+  - [`UdpListener`](file:///home/chad/source/rust/flotilla/src/server/udp_listener.rs): Polled non-blocking UDP datagram engine driver.
+  - [`TcpListener`](file:///home/chad/source/rust/flotilla/src/server/tcp_listener.rs): Async multi-client TCP connection pool listener.
+  - [`GrpcService`](file:///home/chad/source/rust/flotilla/src/server/grpc_service.rs): HTTP/2 gRPC service implementing `Propose`, `Step`, and `ClusterStatus`.
+- **Client Proposals & Leader Redirection**: Inbound proposals automatically append to the leader or reject with a leader hint for transparent client redirection.
 - **Strictly Modular (Type-per-File)**: Every struct, enum, and trait is decomposed into its own dedicated file without hidden private helper routines.
-- **Pluggable Archival**: Seamlessly stream committed entries to disk WALs or databases asynchronously without blocking consensus replication.
+- **Pluggable Archival**: Stream committed entries to disk WALs or Azure Cosmos DB asynchronously without blocking consensus replication.
 - **Safe Zero-Copy Wire Protocol**: Binary datagram framing built on `zerocopy 0.8` without `unsafe`.
+
+---
 
 ## Codebase Organization (Type-per-File)
 
-All domain primitives, message models, protocol frames, and consensus logic are separated into dedicated, single-type files within submodules, with top-level re-exports for backwards compatibility:
+All domain primitives, message models, protocol frames, and consensus logic are separated into dedicated, single-type files within submodules, with top-level re-exports:
 
 - **`types/`**:
   - [`NodeId`](file:///home/chad/source/rust/flotilla/src/types/node_id.rs): Cluster node identifier.
@@ -34,11 +51,12 @@ All domain primitives, message models, protocol frames, and consensus logic are 
   - [`RequestVoteReply`](file:///home/chad/source/rust/flotilla/src/message/request_vote_reply.rs): Vote response payload.
   - [`AppendEntriesHeader`](file:///home/chad/source/rust/flotilla/src/message/append_entries_header.rs): Fixed replication RPC header.
   - [`AppendEntriesReply`](file:///home/chad/source/rust/flotilla/src/message/append_entries_reply.rs): Replication acknowledgment.
+  - [`ClientProposalReply`](file:///home/chad/source/rust/flotilla/src/message/client_proposal_reply.rs): Client proposal acknowledgment with leader hint.
   - [`RaftMessage`](file:///home/chad/source/rust/flotilla/src/message/raft_message.rs): High-level strongly-typed Raft message enum.
 - **`codec/`**:
   - [`PacketHeader`](file:///home/chad/source/rust/flotilla/src/codec/packet_header.rs): 40-byte fixed zero-copy packet header.
   - [`CodecError`](file:///home/chad/source/rust/flotilla/src/codec/codec_error.rs): Encoding/decoding error types.
-  - [`mod.rs`](file:///home/chad/source/rust/flotilla/src/codec/mod.rs): Wire framing, CRC32 checksums, and packet parsers.
+  - [`mod.rs`](file:///home/chad/source/rust/flotilla/src/codec/mod.rs): Wire framing, CRC32 checksums, and zero-copy packet encoders/parsers.
 - **`storage/`**:
   - [`LogSlot`](file:///home/chad/source/rust/flotilla/src/storage/log_slot.rs): Cacheline-aligned (64-byte) log entry slot.
   - [`StorageError`](file:///home/chad/source/rust/flotilla/src/storage/storage_error.rs): Ring buffer capacity and bounds errors.
@@ -54,6 +72,27 @@ All domain primitives, message models, protocol frames, and consensus logic are 
   - [`FollowerAppendResult`](file:///home/chad/source/rust/flotilla/src/replication/follower_append_result.rs): Follower AppendEntries evaluation outcome.
   - [`evaluator.rs`](file:///home/chad/source/rust/flotilla/src/replication/evaluator.rs): Standalone follower log append evaluator.
 - **`commit.rs`**: Quorum median calculations and commit advancement evaluation.
+- **`engine/`**:
+  - [`EngineError`](file:///home/chad/source/rust/flotilla/src/engine/engine_error.rs): State machine error definitions.
+  - [`OutboundMessage`](file:///home/chad/source/rust/flotilla/src/engine/outbound_message.rs): Actions emitted by the engine (`SendPacket`, `ApplyEntries`).
+  - [`RaftConfig`](file:///home/chad/source/rust/flotilla/src/engine/raft_config.rs): Consensus node configuration options.
+  - [`RaftNode`](file:///home/chad/source/rust/flotilla/src/engine/raft_node.rs): Top-level sans-I/O Raft consensus engine.
+  - [`packets.rs`](file:///home/chad/source/rust/flotilla/src/engine/packets.rs): Standalone packet and proposal construction pure functions.
+- **`client/`**:
+  - [`FlotillaClient`](file:///home/chad/source/rust/flotilla/src/client/flotilla_client.rs): Unified async client proposal trait (`propose`, `ping`).
+  - [`ClientConfig`](file:///home/chad/source/rust/flotilla/src/client/client_config.rs): Client connection endpoints, timeout, and retry settings.
+  - [`ClientError`](file:///home/chad/source/rust/flotilla/src/client/client_error.rs): Transport errors, timeouts, and codec errors.
+  - [`ProposalResult`](file:///home/chad/source/rust/flotilla/src/client/proposal_result.rs): Proposal outcome (`success`, `index`, `term`, `leader_id`).
+  - [`UdpClient`](file:///home/chad/source/rust/flotilla/src/client/udp/udp_client.rs): Datagram client driver.
+  - [`TcpClient`](file:///home/chad/source/rust/flotilla/src/client/tcp/tcp_client.rs): Length-prefixed TCP client driver.
+  - [`GrpcClient`](file:///home/chad/source/rust/flotilla/src/client/grpc/grpc_client.rs): HTTP/2 gRPC client driver.
+  - [`framing.rs`](file:///home/chad/source/rust/flotilla/src/client/tcp/framing.rs): Async TCP frame reader and writer.
+- **`server/`**:
+  - [`ServerConfig`](file:///home/chad/source/rust/flotilla/src/server/server_config.rs): Server bind address and connection limits.
+  - [`ServerError`](file:///home/chad/source/rust/flotilla/src/server/server_error.rs): Network I/O and protocol server error types.
+  - [`UdpListener`](file:///home/chad/source/rust/flotilla/src/server/udp_listener.rs): Polled non-blocking UDP datagram engine driver.
+  - [`TcpListener`](file:///home/chad/source/rust/flotilla/src/server/tcp_listener.rs): Async multi-client TCP connection pool listener.
+  - [`GrpcService`](file:///home/chad/source/rust/flotilla/src/server/grpc_service.rs): HTTP/2 gRPC server service wrapping `RaftNode`.
 - **`archive/`**:
   - [`ArchivedEntry`](file:///home/chad/source/rust/flotilla/src/archive/archived_entry.rs): Committed entry payload for offloading.
   - [`AsyncArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/async_archive_sink.rs): Storage target trait (`write_entries`, `flush`).
@@ -61,26 +100,37 @@ All domain primitives, message models, protocol frames, and consensus logic are 
   - [`ArchivePipeline`](file:///home/chad/source/rust/flotilla/src/archive/archive_pipeline.rs): Buffered asynchronous archival pipeline.
   - [`NullArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/null_archive_sink.rs): In-memory discarding sink.
   - [`FileArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/file_archive_sink.rs): Append-only WAL file sink with CRC verification.
-- **`engine/`**:
-  - [`EngineError`](file:///home/chad/source/rust/flotilla/src/engine/engine_error.rs): State machine error definitions.
-  - [`OutboundMessage`](file:///home/chad/source/rust/flotilla/src/engine/outbound_message.rs): Actions emitted by the engine (`SendPacket`, `ApplyEntries`).
-  - [`RaftConfig`](file:///home/chad/source/rust/flotilla/src/engine/raft_config.rs): Consensus node configuration options.
-  - [`RaftNode`](file:///home/chad/source/rust/flotilla/src/engine/raft_node.rs): Top-level sans-I/O Raft consensus engine.
-  - [`packets.rs`](file:///home/chad/source/rust/flotilla/src/engine/packets.rs): Outbound packet construction functions.
+  - `cosmos/`: Optional Azure Cosmos DB archival offloader subsystem.
 - **`udp/`**:
   - [`UdpDriver`](file:///home/chad/source/rust/flotilla/src/udp/udp_driver.rs): Lightweight non-blocking socket driver wrapper.
   - [`UdpClusterRouter`](file:///home/chad/source/rust/flotilla/src/udp/udp_cluster_router.rs): Bidirectional `NodeId` to `SocketAddr` address mapping.
-  - [`framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): MTU bounds checks.
+  - [`framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): UDP MTU bounds checks.
 
-## Quickstart
+---
 
-Add `flotilla` to your `Cargo.toml`:
-```toml
-[dependencies]
-flotilla = "0.1"
-```
+## Cargo Feature Flags
 
-### Basic Engine Instantiation
+Flotilla supports modular compilation flags:
+
+| Feature Flag | Default | Included Capabilities |
+| :--- | :---: | :--- |
+| `default` | Yes | Includes `client-udp` |
+| `client-udp` | Yes | UDP datagram client (`UdpClient`) |
+| `client-tcp` | No | Async TCP client (`TcpClient`, `tokio`) |
+| `client-grpc` | No | HTTP/2 gRPC client (`GrpcClient`, `tonic`, `prost`) |
+| `server-tcp` | No | Async TCP server listener (`TcpListener`, `tokio`) |
+| `server-grpc` | No | HTTP/2 gRPC server service (`GrpcService`, `tonic`, `prost`) |
+| `udp` | No | Composite flag enabling `client-udp` |
+| `tcp` | No | Composite flag enabling `client-tcp` and `server-tcp` |
+| `grpc` | No | Composite flag enabling `client-grpc` and `server-grpc` |
+| `cosmos` | No | Azure Cosmos DB archival offloader |
+| `full` | No | All features: `udp`, `tcp`, `grpc`, and `cosmos` |
+
+---
+
+## Usage Guide
+
+### 1. Sans-I/O Engine Instantiation
 
 ```rust
 use flotilla::engine::{RaftConfig, RaftNode};
@@ -94,17 +144,67 @@ let config = RaftConfig {
     heartbeat_interval_ticks: 3,
 };
 
-let mut node = RaftNode::<1024>::new(config);
+// Instantiate node with 1024 slots and 1024-byte maximum payload
+let mut node = RaftNode::<1024, 1024>::new(config);
 
-// Trigger a tick
-node.tick();
+// Trigger a logical timer tick
+let outbound_messages = node.tick();
 ```
+
+### 2. Client Proposal Submission
+
+Submitting a proposal using the [`FlotillaClient`](file:///home/chad/source/rust/flotilla/src/client/flotilla_client.rs) interface:
+
+```rust,ignore
+use flotilla::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
+
+// Connect via UDP
+let udp_client = UdpClient::connect("127.0.0.1:9001")?;
+let result = udp_client.propose(b"set_key:value").await?;
+
+if result.is_success() {
+    println!("Committed at log index {} in term {}", result.index.0, result.term.0);
+} else if let Some(leader) = result.leader_id {
+    println!("Not leader. Redirect to node {}", leader.0);
+}
+```
+
+### 3. Server Transport Listeners
+
+#### Async TCP Server Listener
+```rust,ignore
+use flotilla::engine::{RaftConfig, RaftNode};
+use flotilla::server::TcpListener;
+use parking_lot::Mutex;
+use std::sync::Arc;
+
+let config = RaftConfig::default();
+let node = Arc::new(Mutex::new(RaftNode::<1024, 1024>::new(config)));
+let listener = TcpListener::bind("0.0.0.0:9001".parse()?, Arc::clone(&node)).await?;
+```
+
+#### HTTP/2 gRPC Service
+```rust,ignore
+use flotilla::engine::{RaftConfig, RaftNode};
+use flotilla::server::GrpcService;
+use parking_lot::Mutex;
+use std::sync::Arc;
+
+let node = Arc::new(Mutex::new(RaftNode::<1024, 1024>::new(RaftConfig::default())));
+let service = GrpcService::new(node);
+service.serve("0.0.0.0:50051".parse()?).await?;
+```
+
+---
 
 ## Running Tests & Quality Gates
 
 ```bash
-# Run all unit and integration tests
+# Run all unit and integration tests (default features)
 cargo test --all-targets
+
+# Run tests across all feature flags (UDP, TCP, gRPC, Cosmos)
+cargo test --all-targets --all-features
 
 # Run zero-allocation hot path verification test suite
 cargo test --test zero_alloc_tests
@@ -113,9 +213,12 @@ cargo test --test zero_alloc_tests
 python3 .github/scripts/check_coding_standards.py
 cargo test --test coding_standards_tests
 
+# Check for clippy warnings across all features
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Verify documentation generation
+cargo doc --all-features --no-deps
+
 # Run performance benchmarks
 cargo bench
-
-# Check for clippy warnings
-cargo clippy --all-targets -- -D warnings
 ```
