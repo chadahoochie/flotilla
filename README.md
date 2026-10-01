@@ -16,17 +16,30 @@ Flotilla is a deterministic, constant-memory distributed consensus engine engine
 
 ```mermaid
 graph TD
-    subgraph Network ["Transport Layer"]
-        UDP[UDP Driver / Socket] -->|Inbound Packets| Codec[Zero-Copy Codec]
-        Codec -->|Framed Datagrams| UDP
+    subgraph Network ["Pluggable Transport Layer"]
+        UDP[UDP Driver / UdpListener / UdpClient]
+        TCP[TCP Listener / TcpClient / Length Framing]
+        GRPC[gRPC Service / GrpcClient / HTTP/2 Protobuf]
     end
 
-    subgraph Core ["Deterministic Sans-I/O Core"]
-        Client[Client Proposals] -->|Raw Bytes| Engine[RaftNode Engine]
-        Codec -->|Decoded Packets| Engine
-        Engine -->|Outbound Envelopes| Codec
-        Tick[Deterministic Ticker] -->|Manual Ticks| Engine
+    subgraph CodecLayer ["Wire & Codec Layer"]
+        Codec[Zero-Copy Codec zerocopy 0.8]
+        Framing[Stream & Datagram Framing]
     end
+
+    UDP <--> Codec
+    TCP <--> Framing
+    Framing <--> Codec
+
+    subgraph Core ["Deterministic Sans-I/O Core"]
+        Engine[RaftNode Engine]
+        Tick[Deterministic Ticker] -->|Manual Ticks| Engine
+        Client[Client Proposals] -->|Raw Bytes & Redirection| Engine
+        Codec -->|Decoded Packets| Engine
+        Engine -->|Outbound Envelopes / ApplyEntries| Codec
+    end
+
+    GRPC <--> Engine
 
     subgraph Storage ["Zero-Alloc Storage Engine"]
         Engine -->|Append / Truncate| RingBuf[RingBufferLogStorage]
@@ -34,7 +47,7 @@ graph TD
     end
 
     subgraph Archival ["Async Archival Sinks"]
-        Pipe -->|Non-blocking Queue| Disk[FileArchiveSink / WAL]
+        Pipe -->|Non-blocking Channel| Disk[FileArchiveSink / WAL]
         Pipe -->|Optional Feature| Cosmos[CosmosArchiveSink]
         Disk -->|Compaction Watermark| Engine
         Cosmos -->|Compaction Watermark| Engine
@@ -45,24 +58,31 @@ graph TD
 The core consensus engine imports no socket primitives (`std::net`), no system clocks (`Instant::now`), and no thread-spawning runtimes (`std::thread`, `tokio`). All state transitions occur through deterministic memory functions:
 - `RaftNode::step(sender, packet_bytes) -> Result<Vec<OutboundMessage>, EngineError>`
 - `RaftNode::tick() -> Vec<OutboundMessage>`
+- `RaftNode::propose(payload) -> Result<LogIndex, EngineError>`
 
 ### 2. Zero-Allocation Hot Path Execution
 Steady-state log appending, follower AppendEntries validation, packet framing, and election timer updates execute with **zero dynamic heap allocations**. Memory is backed by pre-allocated, power-of-two static circular buffers and borrowed slices.
 
-### 3. Type-per-File Modular Decomposition
+### 3. Pluggable Client & Server Transports
+Consensus nodes easily integrate across heterogeneous networking layers through modular client drivers and server listeners:
+- **UDP**: Lightweight datagram client (`UdpClient`), polled listener (`UdpListener`), and socket driver (`UdpDriver`).
+- **TCP**: Connection-oriented client (`TcpClient`), async connection listener (`TcpListener`), and length-prefixed stream framing.
+- **gRPC**: Multi-language HTTP/2 client (`GrpcClient`) and service (`GrpcService`) powered by Tonic and Prost.
+
+### 4. Type-per-File Modular Decomposition
 Every `struct`, `enum`, and `trait` is strictly isolated into its own dedicated source file matching its snake_case name. No sprawling god-files or tangled multi-type definitions.
 
-### 4. Prohibition of Private Helper Methods
+### 5. Prohibition of Private Helper Methods
 Inherent `impl` blocks strictly prohibit private helper methods (`fn helper(&self)`). Algorithmic evaluations, rules, and packet builders are decomposed into standalone, crate-visible (`pub` or `pub(crate)`) pure functions. This enables 100% isolated unit testability without mocking.
 
-### 5. Test-Driven Development with Heavy Focus on Refactoring
+### 6. Test-Driven Development with Heavy Focus on Refactoring
 Every feature follows the **Red -> Green -> Refactor** cycle. The **Refactor** phase is the primary engineering driver: eliminating allocations, verifying cacheline alignment, decomposing into single types, and enforcing zero compiler warnings.
 
 ---
 
 ## 📋 Best Practices & Engineering Standards
 
-Flotilla adheres to four non-negotiable coding standards. For the complete specification and guidelines, see [**`CODING_STANDARDS.md`**](file:///home/chad/source/rust/flotilla/CODING_STANDARDS.md).
+Flotilla adheres to strict, non-negotiable coding standards. For the complete specification and guidelines, see [**`CODING_STANDARDS.md`**](file:///home/chad/source/rust/flotilla/CODING_STANDARDS.md).
 
 ### 1. Test-Driven Development (TDD: Red / Green / Refactor)
 
@@ -87,7 +107,7 @@ Flotilla adheres to four non-negotiable coding standards. For the complete speci
   ```
   Enables branchless $O(1)$ bitwise masking (`(index - 1) & (CAPACITY - 1)`).
 - **Cacheline Alignment**: High-contention slots derive `#[repr(align(64))]` to prevent CPU cacheline bouncing.
-- **Safe Transmutation**: Wire packets derive `zerocopy 0.8` (`FromBytes`, `IntoBytes`, `Immutable`). `unsafe std::mem::transmute` is forbidden.
+- **Safe Transmutation**: Wire packets derive `zerocopy 0.8` (`FromBytes`, `IntoBytes`, `Immutable`, `KnownLayout`). `unsafe std::mem::transmute` is forbidden.
 - **Automated Verification**: The test suite includes a custom `#[global_allocator]` tracking harness in [`tests/zero_alloc_tests.rs`](file:///home/chad/source/rust/flotilla/tests/zero_alloc_tests.rs) asserting 0 allocations across all hot paths.
 
 ### 3. Type-per-File Decomposition Standard
@@ -95,13 +115,15 @@ Flotilla adheres to four non-negotiable coding standards. For the complete speci
 - Exactly **one primary type per file** named in `snake_case` matching the type's `PascalCase` name.
 - Domain modules under `src/` organize types cleanly:
   - Primitives: [`NodeId`](file:///home/chad/source/rust/flotilla/src/types/node_id.rs), [`Term`](file:///home/chad/source/rust/flotilla/src/types/term.rs), [`LogIndex`](file:///home/chad/source/rust/flotilla/src/types/log_index.rs), [`Role`](file:///home/chad/source/rust/flotilla/src/types/role.rs), [`HardState`](file:///home/chad/source/rust/flotilla/src/types/hard_state.rs)
-  - Messages: [`MsgType`](file:///home/chad/source/rust/flotilla/src/message/msg_type.rs), [`RequestVoteArgs`](file:///home/chad/source/rust/flotilla/src/message/request_vote_args.rs), [`RequestVoteReply`](file:///home/chad/source/rust/flotilla/src/message/request_vote_reply.rs), [`AppendEntriesHeader`](file:///home/chad/source/rust/flotilla/src/message/append_entries_header.rs), [`AppendEntriesReply`](file:///home/chad/source/rust/flotilla/src/message/append_entries_reply.rs), [`RaftMessage`](file:///home/chad/source/rust/flotilla/src/message/raft_message.rs)
+  - Messages: [`MsgType`](file:///home/chad/source/rust/flotilla/src/message/msg_type.rs), [`RequestVoteArgs`](file:///home/chad/source/rust/flotilla/src/message/request_vote_args.rs), [`RequestVoteReply`](file:///home/chad/source/rust/flotilla/src/message/request_vote_reply.rs), [`AppendEntriesHeader`](file:///home/chad/source/rust/flotilla/src/message/append_entries_header.rs), [`AppendEntriesReply`](file:///home/chad/source/rust/flotilla/src/message/append_entries_reply.rs), [`ClientProposalReply`](file:///home/chad/source/rust/flotilla/src/message/client_proposal_reply.rs), [`RaftMessage`](file:///home/chad/source/rust/flotilla/src/message/raft_message.rs)
   - Codec: [`PacketHeader`](file:///home/chad/source/rust/flotilla/src/codec/packet_header.rs), [`CodecError`](file:///home/chad/source/rust/flotilla/src/codec/codec_error.rs)
   - Storage: [`LogSlot`](file:///home/chad/source/rust/flotilla/src/storage/log_slot.rs), [`StorageError`](file:///home/chad/source/rust/flotilla/src/storage/storage_error.rs), [`RingBufferLogStorage`](file:///home/chad/source/rust/flotilla/src/storage/ring_buffer_log_storage.rs)
   - Election: [`ElectionAction`](file:///home/chad/source/rust/flotilla/src/election/election_action.rs), [`ElectionConfig`](file:///home/chad/source/rust/flotilla/src/election/election_config.rs), [`ElectionState`](file:///home/chad/source/rust/flotilla/src/election/election_state.rs)
   - Replication: [`PeerProgress`](file:///home/chad/source/rust/flotilla/src/replication/peer_progress.rs), [`PeerProgressTracker`](file:///home/chad/source/rust/flotilla/src/replication/peer_progress_tracker.rs), [`FollowerAppendResult`](file:///home/chad/source/rust/flotilla/src/replication/follower_append_result.rs)
-  - Archival: [`ArchivedEntry`](file:///home/chad/source/rust/flotilla/src/archive/archived_entry.rs), [`AsyncArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/async_archive_sink.rs), [`PipelineError`](file:///home/chad/source/rust/flotilla/src/archive/pipeline_error.rs), [`ArchivePipeline`](file:///home/chad/source/rust/flotilla/src/archive/archive_pipeline.rs), [`FileArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/file_archive_sink.rs), [`NullArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/null_archive_sink.rs)
   - Engine: [`RaftConfig`](file:///home/chad/source/rust/flotilla/src/engine/raft_config.rs), [`EngineError`](file:///home/chad/source/rust/flotilla/src/engine/engine_error.rs), [`OutboundMessage`](file:///home/chad/source/rust/flotilla/src/engine/outbound_message.rs), [`RaftNode`](file:///home/chad/source/rust/flotilla/src/engine/raft_node.rs)
+  - Client: [`FlotillaClient`](file:///home/chad/source/rust/flotilla/src/client/flotilla_client.rs), [`ClientConfig`](file:///home/chad/source/rust/flotilla/src/client/client_config.rs), [`ClientError`](file:///home/chad/source/rust/flotilla/src/client/client_error.rs), [`ProposalResult`](file:///home/chad/source/rust/flotilla/src/client/proposal_result.rs), [`UdpClient`](file:///home/chad/source/rust/flotilla/src/client/udp/udp_client.rs), [`TcpClient`](file:///home/chad/source/rust/flotilla/src/client/tcp/tcp_client.rs), [`GrpcClient`](file:///home/chad/source/rust/flotilla/src/client/grpc/grpc_client.rs)
+  - Server: [`ServerConfig`](file:///home/chad/source/rust/flotilla/src/server/server_config.rs), [`ServerError`](file:///home/chad/source/rust/flotilla/src/server/server_error.rs), [`UdpListener`](file:///home/chad/source/rust/flotilla/src/server/udp_listener.rs), [`TcpListener`](file:///home/chad/source/rust/flotilla/src/server/tcp_listener.rs), [`GrpcService`](file:///home/chad/source/rust/flotilla/src/server/grpc_service.rs)
+  - Archival: [`ArchivedEntry`](file:///home/chad/source/rust/flotilla/src/archive/archived_entry.rs), [`AsyncArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/async_archive_sink.rs), [`PipelineError`](file:///home/chad/source/rust/flotilla/src/archive/pipeline_error.rs), [`ArchivePipeline`](file:///home/chad/source/rust/flotilla/src/archive/archive_pipeline.rs), [`FileArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/file_archive_sink.rs), [`NullArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/null_archive_sink.rs)
   - UDP: [`UdpDriver`](file:///home/chad/source/rust/flotilla/src/udp/udp_driver.rs), [`UdpClusterRouter`](file:///home/chad/source/rust/flotilla/src/udp/udp_cluster_router.rs)
 
 ### 4. Prohibition of Private Helper Methods Standard
@@ -112,8 +134,29 @@ Flotilla adheres to four non-negotiable coding standards. For the complete speci
   - [`evaluator.rs`](file:///home/chad/source/rust/flotilla/src/replication/evaluator.rs): Follower AppendEntries verification.
   - [`commit.rs`](file:///home/chad/source/rust/flotilla/src/commit.rs): Quorum median calculations and commit advancement.
   - [`packets.rs`](file:///home/chad/source/rust/flotilla/src/engine/packets.rs): Outbound datagram packet construction.
-  - [`framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): MTU size validation.
+  - [`udp/framing.rs`](file:///home/chad/source/rust/flotilla/src/udp/framing.rs): UDP MTU bounds checks.
+  - [`client/tcp/framing.rs`](file:///home/chad/source/rust/flotilla/src/client/tcp/framing.rs): Async TCP length-prefixed frame encoding and decoding.
 - **Granular Testability**: Because functions are pure and public, every edge case can be tested with 100% isolation.
+
+---
+
+## 📦 Cargo Feature Flags
+
+Flotilla provides modular feature flags so applications only compile the transports and integrations they require:
+
+| Feature Flag | Default | Description | Key Dependencies |
+| :--- | :---: | :--- | :--- |
+| `default` | Yes | Standard installation | `client-udp` |
+| `client-udp` | Yes | UDP datagram client (`UdpClient`) | Standard library only |
+| `client-tcp` | No | Async TCP client (`TcpClient`) | `tokio` |
+| `client-grpc` | No | HTTP/2 gRPC client (`GrpcClient`) | `tonic`, `prost` |
+| `server-tcp` | No | Async TCP server listener (`TcpListener`) | `tokio` |
+| `server-grpc` | No | HTTP/2 gRPC server service (`GrpcService`) | `tonic`, `prost` |
+| `udp` | No | Full UDP support | `client-udp` |
+| `tcp` | No | Full TCP client and server support | `client-tcp`, `server-tcp`, `tokio` |
+| `grpc` | No | Full gRPC client and server support | `client-grpc`, `server-grpc`, `tonic`, `prost` |
+| `cosmos` | No | Azure Cosmos DB archival offloader | `reqwest`, `tokio`, `serde`, `hmac`, `sha2` |
+| `full` | No | All transports and archival sinks | `udp`, `tcp`, `grpc`, `cosmos` |
 
 ---
 
@@ -123,10 +166,14 @@ Flotilla adheres to four non-negotiable coding standards. For the complete speci
 
 ```toml
 [dependencies]
+# Default: UDP client
 flotilla = "0.1"
 
-# Optional: Enable Azure Cosmos DB Archival Offloader
-# flotilla = { version = "0.1", features = ["cosmos"] }
+# Enable TCP client and server
+# flotilla = { version = "0.1", features = ["tcp"] }
+
+# Enable full features (UDP, TCP, gRPC, Cosmos DB offloader)
+# flotilla = { version = "0.1", features = ["full"] }
 ```
 
 ### 2. Basic Engine Instantiation
@@ -148,9 +195,35 @@ let mut node = RaftNode::<1024, 1024>::new(config);
 
 // Trigger a logical timer tick
 let outbound_messages = node.tick();
+```
 
-// Step the engine with an inbound datagram
-// let actions = node.step(sender_id, &packet_bytes)?;
+### 3. Client Proposal Submission
+
+```rust,ignore
+use flotilla::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
+
+// Submit a proposal over UDP, TCP, or gRPC
+let client = UdpClient::connect("127.0.0.1:9001")?;
+let res = client.propose(b"payload_data").await?;
+
+if res.is_success() {
+    println!("Accepted at index: {}, term: {}", res.index.0, res.term.0);
+} else if let Some(leader) = res.leader_id {
+    println!("Redirect proposal to leader node {}", leader.0);
+}
+```
+
+### 4. Running a Server Transport Listener
+
+```rust,ignore
+use flotilla::engine::{RaftConfig, RaftNode};
+use flotilla::server::TcpListener;
+use parking_lot::Mutex;
+use std::sync::Arc;
+
+let config = RaftConfig::default();
+let node = Arc::new(Mutex::new(RaftNode::<1024, 1024>::new(config)));
+let listener = TcpListener::bind("0.0.0.0:9001".parse()?, Arc::clone(&node)).await?;
 ```
 
 ---
@@ -161,11 +234,11 @@ Flotilla enforces comprehensive quality checks across the entire codebase.
 
 ### Running the Test Suite
 ```bash
-# Run all unit and integration tests
+# Run all unit, integration, and default transport tests
 cargo test --all-targets
 
-# Run tests with the optional Cosmos DB feature
-cargo test --all-targets --features cosmos
+# Run tests across all feature flags (UDP, TCP, gRPC, Cosmos)
+cargo test --all-targets --all-features
 ```
 
 ### Zero-Allocation Verification Gate
@@ -190,10 +263,13 @@ cargo llvm-cov report --branch --json --summary-only --output-path coverage.json
 python3 .github/scripts/check_coverage.py coverage.json --min-line 85.0 --min-branch 90.0
 ```
 
-### Clippy Hygiene
+### Clippy Hygiene & Documentation
 ```bash
-cargo clippy --all-targets -- -D warnings
-cargo clippy --all-targets --features cosmos -- -D warnings
+# Enforce zero clippy warnings across all features
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Verify documentation builds cleanly
+cargo doc --all-features --no-deps
 ```
 
 ### Performance Benchmarks
@@ -211,22 +287,32 @@ flotilla/
 ├── README.md                   # Primary developer guide & best practices
 ├── Cargo.toml                  # Dependencies, feature flags, profile settings
 ├── LICENSE                     # MIT License
+├── proto/
+│   └── flotilla.proto          # Protocol Buffers definition for gRPC service
 ├── src/
 │   ├── lib.rs                  # Library entrypoint and public module exports
 │   ├── commit.rs               # Standalone quorum median commit evaluator
 │   ├── types/                  # Single-type scalar wrappers (NodeId, Term, etc.)
-│   ├── message/                # Wire message structures (RequestVoteArgs, etc.)
+│   ├── message/                # Wire message structures (RequestVoteArgs, ClientProposalReply, etc.)
 │   ├── codec/                  # PacketHeader (zerocopy 0.8), CodecError, framing
 │   ├── storage/                # Power-of-two RingBufferLogStorage, LogSlot
 │   ├── election/               # ElectionState, ElectionConfig, rules.rs
 │   ├── replication/            # PeerProgressTracker, evaluator.rs
 │   ├── engine/                 # RaftNode, RaftConfig, packets.rs, OutboundMessage
+│   ├── client/                 # FlotillaClient trait, UdpClient, TcpClient, GrpcClient
+│   │   ├── tcp/                # TCP length-prefixed framing and client driver
+│   │   ├── udp/                # UDP datagram client driver
+│   │   └── grpc/               # Tonic HTTP/2 gRPC client driver
+│   ├── server/                 # Transport server listeners (UdpListener, TcpListener, GrpcService)
 │   ├── archive/                # Async archival pipeline, FileArchiveSink, NullArchiveSink
 │   │   └── cosmos/             # Optional Cosmos DB offloader subsystem
 │   └── udp/                    # Non-blocking UdpDriver, UdpClusterRouter, framing.rs
 ├── tests/
 │   ├── zero_alloc_tests.rs     # Tracking allocator hot path verification
 │   ├── coding_standards_tests.rs # Automated structural standards tests
+│   ├── client_udp_tests.rs     # UDP client & listener integration tests
+│   ├── client_tcp_tests.rs     # TCP client & listener integration tests
+│   ├── client_grpc_tests.rs    # gRPC client & service integration tests
 │   ├── archive_tests.rs        # Pipeline and WAL sink tests
 │   ├── cluster_tests.rs        # Multi-node loopback cluster tests
 │   ├── codec_tests.rs          # Zero-copy serialization roundtrip tests
