@@ -1145,3 +1145,251 @@ async fn test_tcp_framing_edge_cases() {
     assert_eq!(n, HEADER_SIZE + 4);
     assert_eq!(&read_buf[..n], &packet[..]);
 }
+
+#[test]
+fn test_raft_node_all_remaining_branches() {
+    use flotilla::message::ClientProposalReply;
+    use zerocopy::IntoBytes;
+
+    let config = RaftConfig {
+        node_id: NodeId(1),
+        peers: vec![NodeId(2), NodeId(3)],
+        election_timeout_ticks: 10,
+        heartbeat_interval_ticks: 2,
+    };
+    let mut node = RaftNode::<32, 64>::new(config);
+
+    // 1. MsgType::ClientProposal when Follower and voted_for != NodeId::NONE
+    node.election.voted_for = NodeId(2);
+    let mut prop_buf = [0u8; 128];
+    let len = flotilla::codec::encode_client_proposal(
+        &mut prop_buf,
+        NodeId(0),
+        NodeId(1),
+        Term(0),
+        b"client_cmd",
+    )
+    .unwrap();
+    let acts = node.step(NodeId(0), &prop_buf[..len]).unwrap();
+    assert_eq!(acts.len(), 1);
+    if let OutboundMessage::SendPacket { packet, .. } = &acts[0] {
+        let (_, p) = decode_packet(packet).unwrap();
+        let reply = ClientProposalReply::read_from_prefix(p).unwrap().0;
+        assert!(!reply.is_success());
+        assert_eq!(reply.leader_id, NodeId(2));
+    }
+
+    // 2. MsgType::ClientProposalReply does nothing
+    let reply = ClientProposalReply {
+        success: 1,
+        _pad: [0; 7],
+        index: LogIndex(1),
+        term: Term(1),
+        leader_id: NodeId(1),
+    };
+    let mut reply_buf = [0u8; 128];
+    let rlen = flotilla::codec::encode_client_proposal_reply(
+        &mut reply_buf,
+        NodeId(2),
+        NodeId(1),
+        Term(1),
+        &reply,
+    )
+    .unwrap();
+    let acts2 = node.step(NodeId(2), &reply_buf[..rlen]).unwrap();
+    assert!(acts2.is_empty());
+
+    // 3. MsgType::HeartbeatArgs does nothing
+    let hb_hdr = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::HeartbeatArgs as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(1),
+        checksum: 0,
+        payload_len: 0,
+    };
+    let mut hb_buf = [0u8; HEADER_SIZE];
+    encode_packet_header(&mut hb_buf, &hb_hdr).unwrap();
+    let acts3 = node.step(NodeId(2), &hb_buf).unwrap();
+    assert!(acts3.is_empty());
+
+    // 4. Short payload for RequestVoteArgs, RequestVoteReply, AppendEntriesArgs
+    for mtype in [
+        MsgType::RequestVoteArgs,
+        MsgType::RequestVoteReply,
+        MsgType::AppendEntriesArgs,
+    ] {
+        let hdr = PacketHeader {
+            magic: MAGIC,
+            version: PROTOCOL_VERSION,
+            msg_type: mtype as u16,
+            sender_id: NodeId(2),
+            receiver_id: NodeId(1),
+            term: Term(1),
+            checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+            payload_len: 3,
+        };
+        let mut short_pkt = [0u8; HEADER_SIZE + 3];
+        encode_packet_header(&mut short_pkt, &hdr).unwrap();
+        short_pkt[HEADER_SIZE..].copy_from_slice(&[1, 2, 3]);
+        assert_eq!(
+            node.step(NodeId(2), &short_pkt),
+            Err(EngineError::InvalidPacket)
+        );
+    }
+
+    // 4b. Short payload for AppendEntriesReply when Leader
+    node.election.role = Role::Leader;
+    let hdr_aer = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::AppendEntriesReply as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(1),
+        checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+        payload_len: 3,
+    };
+    let mut short_aer_pkt = [0u8; HEADER_SIZE + 3];
+    encode_packet_header(&mut short_aer_pkt, &hdr_aer).unwrap();
+    short_aer_pkt[HEADER_SIZE..].copy_from_slice(&[1, 2, 3]);
+    assert_eq!(
+        node.step(NodeId(2), &short_aer_pkt),
+        Err(EngineError::InvalidPacket)
+    );
+    node.election.role = Role::Follower;
+
+    // 5. evaluate_follower_append_entries returning Rejected in RaftNode::step
+    let gap_hdr = AppendEntriesHeader {
+        term: Term(1),
+        leader_id: NodeId(2),
+        prev_log_index: LogIndex(10),
+        prev_log_term: Term(1),
+        leader_commit: LogIndex(0),
+        entries_count: 0,
+        _pad: [0; 4],
+    };
+    let gap_pkt = create_append_entries_packet(NodeId(1), &gap_hdr, &[]).unwrap();
+    let gap_acts = node.step(NodeId(2), &gap_pkt).unwrap();
+    assert_eq!(gap_acts.len(), 1);
+    if let OutboundMessage::SendPacket { packet, .. } = &gap_acts[0] {
+        let (_, p) = decode_packet(packet).unwrap();
+        let rep = AppendEntriesReply::read_from_prefix(p).unwrap().0;
+        assert!(!rep.is_success());
+    }
+
+    // 6. Higher term in packet header causes Leader to StepDown in step()
+    node.election.role = Role::Leader;
+    node.election.current_term = Term(2);
+    let step_down_reply = AppendEntriesReply {
+        term: Term(5),
+        follower_id: NodeId(2),
+        success: 0,
+        match_index: LogIndex::ZERO,
+        _pad: [0; 7],
+    };
+    let high_hdr = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::AppendEntriesReply as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(5),
+        checksum: flotilla::codec::calculate_crc32(step_down_reply.as_bytes()),
+        payload_len: 32,
+    };
+    let mut high_pkt = [0u8; HEADER_SIZE + 32];
+    encode_packet_header(&mut high_pkt, &high_hdr).unwrap();
+    high_pkt[HEADER_SIZE..].copy_from_slice(step_down_reply.as_bytes());
+    let _ = node.step(NodeId(2), &high_pkt).unwrap();
+    assert_eq!(node.role(), Role::Follower);
+    assert_eq!(node.current_term(), Term(5));
+
+    // 7. broadcast_heartbeats when entry_at returns Some entry
+    node.election.role = Role::Leader;
+    let _ = node.storage.append_entry(Term(5), b"entry").unwrap();
+    node.progress.reset_all_next_indices(LogIndex(0));
+    let msgs = node.broadcast_heartbeats();
+    assert!(!msgs.is_empty());
+}
+
+#[test]
+fn test_commit_and_replication_extra_branches() {
+    use flotilla::codec::encode_client_proposal;
+    use flotilla::codec::encode_client_proposal_reply;
+    use flotilla::message::ClientProposalReply;
+
+    // 1. Commit advancement with > 16 nodes -> returns None
+    let many = vec![LogIndex(1); 17];
+    assert_eq!(
+        evaluate_commit_advancement(&many, LogIndex::ZERO, Term(1), |_| Some(Term(1))),
+        None
+    );
+
+    // 2. Commit advancement candidate > current_commit, but term_lookup is different term
+    let three = [LogIndex(2), LogIndex(2), LogIndex(2)];
+    assert_eq!(
+        evaluate_commit_advancement(&three, LogIndex(1), Term(2), |_| Some(Term(1))),
+        None
+    );
+
+    // 3. Commit advancement candidate > current_commit, but term_lookup is None
+    assert_eq!(
+        evaluate_commit_advancement(&three, LogIndex(1), Term(2), |_| None),
+        None
+    );
+
+    // 4. Replication evaluator: leader_commit > current_commit, but min_commit <= current_commit
+    let mut storage: RingBufferLogStorage<4, 16> = RingBufferLogStorage::default();
+    storage.append_entry(Term(1), b"e1").unwrap();
+    let mut commit = LogIndex(2);
+    let hdr = AppendEntriesHeader {
+        term: Term(1),
+        leader_id: NodeId(1),
+        prev_log_index: LogIndex(1),
+        prev_log_term: Term(1),
+        leader_commit: LogIndex(5),
+        entries_count: 0,
+        _pad: [0; 4],
+    };
+    let _ = evaluate_follower_append_entries(&hdr, &[], &mut storage, &mut commit);
+    assert_eq!(commit, LogIndex(2));
+
+    // 5. Codec buffer too small for client proposal and reply
+    let mut small_buf = [0u8; 10];
+    assert_eq!(
+        encode_client_proposal(&mut small_buf, NodeId(1), NodeId(2), Term(1), b"data"),
+        Err(CodecError::BufferTooSmall)
+    );
+    let rep = ClientProposalReply {
+        success: 1,
+        _pad: [0; 7],
+        index: LogIndex(1),
+        term: Term(1),
+        leader_id: NodeId(1),
+    };
+    assert_eq!(
+        encode_client_proposal_reply(&mut small_buf, NodeId(1), NodeId(2), Term(1), &rep),
+        Err(CodecError::BufferTooSmall)
+    );
+
+    // 6. ElectionState: can_vote is true, but log_ok is false
+    let cfg = ElectionConfig {
+        node_id: NodeId(1),
+        cluster_size: 2,
+        election_timeout_ticks: 10,
+        heartbeat_interval_ticks: 2,
+    };
+    let mut state = ElectionState::new(cfg);
+    let args = RequestVoteArgs {
+        term: Term(2),
+        candidate_id: NodeId(2),
+        last_log_index: LogIndex(5),
+        last_log_term: Term(1),
+    };
+    let rep = state.handle_request_vote(&args, Term(2), LogIndex(5));
+    assert_eq!(rep.vote_granted, 0);
+    assert_eq!(state.voted_for, NodeId::NONE);
+}
