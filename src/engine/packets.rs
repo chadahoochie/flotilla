@@ -1,9 +1,10 @@
 use crate::codec::{
-    encode_append_entries, encode_append_entries_reply, encode_request_vote_args,
-    encode_request_vote_reply, CodecError, HEADER_SIZE,
+    CodecError, HEADER_SIZE, encode_append_entries, encode_append_entries_reply,
+    encode_client_proposal, encode_client_proposal_reply, encode_request_vote_args,
+    encode_request_vote_reply,
 };
 use crate::message::{
-    AppendEntriesHeader, AppendEntriesReply, RequestVoteArgs, RequestVoteReply,
+    AppendEntriesHeader, AppendEntriesReply, ClientProposalReply, RequestVoteArgs, RequestVoteReply,
 };
 use crate::types::{LogIndex, NodeId, Term};
 
@@ -80,5 +81,40 @@ pub fn create_append_entries_reply_packet(
     };
     let mut buf = [0u8; 128];
     let len = encode_append_entries_reply(&mut buf, sender, receiver, term, &reply)?;
+    Ok(buf[..len].to_vec())
+}
+
+/// Standalone pure constructor for ClientProposal packet envelopes.
+pub fn create_client_proposal_packet(
+    sender: NodeId,
+    receiver: NodeId,
+    term: Term,
+    payload: &[u8],
+) -> Result<Vec<u8>, CodecError> {
+    let total_needed = HEADER_SIZE + payload.len();
+    let mut buf = vec![0u8; total_needed];
+    let len = encode_client_proposal(&mut buf, sender, receiver, term, payload)?;
+    buf.truncate(len);
+    Ok(buf)
+}
+
+/// Standalone pure constructor for ClientProposal reply packet envelopes.
+pub fn create_client_proposal_reply_packet(
+    sender: NodeId,
+    receiver: NodeId,
+    term: Term,
+    success: bool,
+    index: LogIndex,
+    leader_id: NodeId,
+) -> Result<Vec<u8>, CodecError> {
+    let reply = ClientProposalReply {
+        success: if success { 1 } else { 0 },
+        _pad: [0; 7],
+        index,
+        term,
+        leader_id,
+    };
+    let mut buf = [0u8; 128];
+    let len = encode_client_proposal_reply(&mut buf, sender, receiver, term, &reply)?;
     Ok(buf[..len].to_vec())
 }

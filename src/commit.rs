@@ -49,8 +49,7 @@ where
 
     let candidate_commit = calculate_quorum_commit_index(slice);
 
-    if candidate_commit.0 > current_commit.0
-        && term_lookup(candidate_commit) == Some(current_term)
+    if candidate_commit.0 > current_commit.0 && term_lookup(candidate_commit) == Some(current_term)
     {
         return Some(candidate_commit);
     }

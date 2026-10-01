@@ -28,7 +28,10 @@ impl FileArchiveSink {
     /// Open an existing WAL file for appending.
     pub fn open_append<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let path_buf = path.as_ref().to_path_buf();
-        let file = OpenOptions::new().create(true).append(true).open(&path_buf)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path_buf)?;
         Ok(Self {
             path: path_buf,
             writer: BufWriter::new(file),

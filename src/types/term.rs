@@ -3,7 +3,19 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 /// Raft election term counter.
 #[repr(transparent)]
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, FromBytes, IntoBytes, Immutable, KnownLayout,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    FromBytes,
+    IntoBytes,
+    Immutable,
+    KnownLayout,
 )]
 pub struct Term(pub u64);
 

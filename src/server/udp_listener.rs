@@ -1,0 +1,50 @@
+use crate::engine::{OutboundMessage, RaftNode};
+use crate::types::NodeId;
+use crate::udp::{UdpClusterRouter, UdpDriver};
+use std::io;
+use std::net::{SocketAddr, ToSocketAddrs};
+
+/// Network listener for receiving and dispatching UDP consensus packets.
+pub struct UdpListener {
+    pub driver: UdpDriver,
+    pub router: UdpClusterRouter,
+}
+
+impl UdpListener {
+    /// Bind a new UDP listener to the designated address.
+    pub fn bind<A: ToSocketAddrs>(addr: A, router: UdpClusterRouter) -> io::Result<Self> {
+        let driver = UdpDriver::bind(addr)?;
+        Ok(Self { driver, router })
+    }
+
+    /// Return the local bound socket address.
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.driver.local_addr()
+    }
+
+    /// Poll and process incoming datagrams, stepping the consensus node and sending outbound packets.
+    pub fn poll_and_step<const CAPACITY: usize, const MAX_PAYLOAD: usize>(
+        &self,
+        node: &mut RaftNode<CAPACITY, MAX_PAYLOAD>,
+        buf: &mut [u8],
+    ) -> io::Result<usize> {
+        match self.driver.recv_from(buf) {
+            Ok((len, src_addr)) => {
+                let sender_id = self.router.peer_id(&src_addr).unwrap_or(NodeId(0));
+                if let Ok(actions) = node.step(sender_id, &buf[..len]) {
+                    for act in actions {
+                        if let OutboundMessage::SendPacket { to, packet } = act {
+                            if let Some(dest_addr) = self.router.peer_addr(to) {
+                                let _ = self.driver.send_to(&packet, dest_addr);
+                            } else if to == sender_id {
+                                let _ = self.driver.send_to(&packet, src_addr);
+                            }
+                        }
+                    }
+                }
+                Ok(len)
+            }
+            Err(e) => Err(e),
+        }
+    }
+}

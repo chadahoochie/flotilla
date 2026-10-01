@@ -9,6 +9,9 @@ pub mod null_archive_sink;
 pub mod pipeline_error;
 pub mod sinks;
 
+#[cfg(feature = "cosmos")]
+pub mod cosmos;
+
 pub use archive_pipeline::ArchivePipeline;
 pub use archived_entry::ArchivedEntry;
 pub use async_archive_sink::AsyncArchiveSink;
@@ -16,3 +19,6 @@ pub use channel::ArchivePipeline as PipelineChannel;
 pub use file_archive_sink::FileArchiveSink;
 pub use null_archive_sink::NullArchiveSink;
 pub use pipeline_error::PipelineError;
+
+#[cfg(feature = "cosmos")]
+pub use cosmos::CosmosArchiveSink;

@@ -41,6 +41,10 @@ jobs:
           cargo llvm-cov --branch --html --output-dir target/llvm-cov/html
           cargo llvm-cov report --branch --json --summary-only --output-path coverage.json
 
+      - name: Enforce coding standards (no-private-helpers, type-per-file, zero-alloc)
+        run: |
+          python3 .github/scripts/check_coding_standards.py
+
       - name: Enforce coverage gate (85% Line, 90% Branch)
         run: |
           python3 .github/scripts/check_coverage.py coverage.json --min-line 85.0 --min-branch 90.0 --markdown-output coverage_summary.md

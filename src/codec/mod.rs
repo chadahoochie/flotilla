@@ -4,10 +4,11 @@ pub mod codec_error;
 pub mod packet_header;
 
 pub use codec_error::CodecError;
-pub use packet_header::{PacketHeader, HEADER_SIZE};
+pub use packet_header::{HEADER_SIZE, PacketHeader};
 
 use crate::message::{
-    AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
+    AppendEntriesHeader, AppendEntriesReply, ClientProposalReply, MsgType, RequestVoteArgs,
+    RequestVoteReply,
 };
 use crate::types::{NodeId, Term};
 use crc32fast::Hasher;
@@ -42,8 +43,8 @@ pub fn decode_packet(buf: &[u8]) -> Result<(PacketHeader, &[u8]), CodecError> {
         return Err(CodecError::BufferTooSmall);
     }
 
-    let (header, rest) = PacketHeader::read_from_prefix(buf)
-        .map_err(|_| CodecError::SerializationError)?;
+    let (header, rest) =
+        PacketHeader::read_from_prefix(buf).map_err(|_| CodecError::SerializationError)?;
 
     if header.magic != MAGIC {
         return Err(CodecError::InvalidMagic(header.magic));
@@ -63,10 +64,7 @@ pub fn decode_packet(buf: &[u8]) -> Result<(PacketHeader, &[u8]), CodecError> {
 }
 
 /// Encode a raw packet header into the destination buffer.
-pub fn encode_packet_header(
-    buf: &mut [u8],
-    header: &PacketHeader,
-) -> Result<usize, CodecError> {
+pub fn encode_packet_header(buf: &mut [u8], header: &PacketHeader) -> Result<usize, CodecError> {
     if buf.len() < HEADER_SIZE {
         return Err(CodecError::BufferTooSmall);
     }
@@ -205,5 +203,66 @@ pub fn encode_append_entries(
     let header_end = HEADER_SIZE + header_bytes.len();
     buf[HEADER_SIZE..header_end].copy_from_slice(header_bytes);
     buf[header_end..total_len].copy_from_slice(entries_data);
+    Ok(total_len)
+}
+
+/// Encode a ClientProposal message into a datagram buffer.
+pub fn encode_client_proposal(
+    buf: &mut [u8],
+    sender: NodeId,
+    receiver: NodeId,
+    term: Term,
+    payload: &[u8],
+) -> Result<usize, CodecError> {
+    let total_len = HEADER_SIZE + payload.len();
+    if buf.len() < total_len {
+        return Err(CodecError::BufferTooSmall);
+    }
+
+    let checksum = calculate_crc32(payload);
+    let header = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::ClientProposal as u16,
+        sender_id: sender,
+        receiver_id: receiver,
+        term,
+        checksum,
+        payload_len: payload.len() as u32,
+    };
+
+    encode_packet_header(buf, &header)?;
+    buf[HEADER_SIZE..total_len].copy_from_slice(payload);
+    Ok(total_len)
+}
+
+/// Encode a ClientProposalReply message into a datagram buffer.
+pub fn encode_client_proposal_reply(
+    buf: &mut [u8],
+    sender: NodeId,
+    receiver: NodeId,
+    term: Term,
+    reply: &ClientProposalReply,
+) -> Result<usize, CodecError> {
+    let payload_bytes = reply.as_bytes();
+    let total_len = HEADER_SIZE + payload_bytes.len();
+    if buf.len() < total_len {
+        return Err(CodecError::BufferTooSmall);
+    }
+
+    let checksum = calculate_crc32(payload_bytes);
+    let header = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::ClientProposalReply as u16,
+        sender_id: sender,
+        receiver_id: receiver,
+        term,
+        checksum,
+        payload_len: payload_bytes.len() as u32,
+    };
+
+    encode_packet_header(buf, &header)?;
+    buf[HEADER_SIZE..total_len].copy_from_slice(payload_bytes);
     Ok(total_len)
 }

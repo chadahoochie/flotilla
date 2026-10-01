@@ -15,3 +15,5 @@ pub trait AsyncArchiveSink: Send + 'static {
 ## Standard Implementations
 1. [`NullArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/null_archive_sink.rs): Discards archived entries immediately. Used for in-memory testing and high-throughput non-persistent benchmarking.
 2. [`FileArchiveSink`](file:///home/chad/source/rust/flotilla/src/archive/file_archive_sink.rs): Appends serialized log records to a sequential segment file on disk (Write-Ahead Log) with IEEE CRC32 verification.
+3. [`CosmosArchiveSink`](cosmos_offloader_plan.md): Asynchronously offloads committed entries to Azure Cosmos DB with hierarchical partition keys (`["/sliceKey", "/dateBucket"]`), bounded micro-batching, and automatic watermark compaction. Gated behind feature flag `[features] cosmos`.
+

@@ -2,28 +2,29 @@ use flotilla::archive::{
     ArchivePipeline, ArchivedEntry, FileArchiveSink, NullArchiveSink, PipelineError,
 };
 use flotilla::codec::{
-    decode_packet, encode_append_entries, encode_append_entries_reply, encode_packet_header,
-    encode_request_vote_args, encode_request_vote_reply, CodecError, PacketHeader, HEADER_SIZE,
-    MAGIC, PROTOCOL_VERSION,
+    CodecError, HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, decode_packet,
+    encode_append_entries, encode_append_entries_reply, encode_packet_header,
+    encode_request_vote_args, encode_request_vote_reply,
 };
 use flotilla::commit::evaluate_commit_advancement;
 use flotilla::election::{
-    is_log_up_to_date, is_quorum_reached, is_vote_eligible, quorum_size, ElectionAction,
-    ElectionConfig, ElectionState,
+    ElectionAction, ElectionConfig, ElectionState, is_log_up_to_date, is_quorum_reached,
+    is_vote_eligible, quorum_size,
 };
 use flotilla::engine::{
-    create_append_entries_packet, create_append_entries_reply_packet, create_request_vote_packet,
-    create_request_vote_reply_packet, EngineError, OutboundMessage, RaftConfig, RaftNode,
+    EngineError, OutboundMessage, RaftConfig, RaftNode, create_append_entries_packet,
+    create_append_entries_reply_packet, create_request_vote_packet,
+    create_request_vote_reply_packet,
 };
 use flotilla::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
 };
 use flotilla::replication::{
-    evaluate_follower_append_entries, FollowerAppendResult, PeerProgressTracker,
+    FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
 use flotilla::storage::{RingBufferLogStorage, StorageError};
 use flotilla::types::{LogIndex, NodeId, Role, Term};
-use flotilla::udp::framing::{fits_in_mtu, ETHERNET_MTU, IP_UDP_OVERHEAD};
+use flotilla::udp::framing::{ETHERNET_MTU, IP_UDP_OVERHEAD, fits_in_mtu};
 use std::io::Write;
 use zerocopy::FromBytes;
 
@@ -270,22 +271,26 @@ fn test_codec_error_branches_and_buffer_too_small() {
     assert!(
         format!("{}", CodecError::UnsupportedVersion(2)).contains("unsupported protocol version")
     );
-    assert!(format!(
-        "{}",
-        CodecError::PayloadLengthMismatch {
-            expected: 10,
-            actual: 5
-        }
-    )
-    .contains("payload length mismatch"));
-    assert!(format!(
-        "{}",
-        CodecError::ChecksumMismatch {
-            header_crc: 1,
-            computed_crc: 2
-        }
-    )
-    .contains("checksum mismatch"));
+    assert!(
+        format!(
+            "{}",
+            CodecError::PayloadLengthMismatch {
+                expected: 10,
+                actual: 5
+            }
+        )
+        .contains("payload length mismatch")
+    );
+    assert!(
+        format!(
+            "{}",
+            CodecError::ChecksumMismatch {
+                header_crc: 1,
+                computed_crc: 2
+            }
+        )
+        .contains("checksum mismatch")
+    );
     assert!(format!("{}", CodecError::InvalidMessageType(99)).contains("invalid message type"));
     assert!(format!("{}", CodecError::SerializationError).contains("failed to serialize"));
 }
@@ -478,26 +483,30 @@ fn test_packets_and_engine_error_display() {
 
     // StorageError Display
     assert!(format!("{}", StorageError::BufferFull).contains("ring buffer storage is full"));
-    assert!(format!(
-        "{}",
-        StorageError::PayloadTooLarge {
-            max: 10,
-            actual: 20
-        }
-    )
-    .contains("entry payload too large"));
+    assert!(
+        format!(
+            "{}",
+            StorageError::PayloadTooLarge {
+                max: 10,
+                actual: 20
+            }
+        )
+        .contains("entry payload too large")
+    );
     assert!(
         format!("{}", StorageError::IndexOutOfBounds { index: LogIndex(5) })
             .contains("out of retained bounds")
     );
-    assert!(format!(
-        "{}",
-        StorageError::CompactionIndexTooHigh {
-            watermark: LogIndex(10),
-            last: LogIndex(5)
-        }
-    )
-    .contains("cannot exceed last log index"));
+    assert!(
+        format!(
+            "{}",
+            StorageError::CompactionIndexTooHigh {
+                watermark: LogIndex(10),
+                last: LogIndex(5)
+            }
+        )
+        .contains("cannot exceed last log index")
+    );
 }
 
 #[test]
@@ -584,9 +593,11 @@ fn test_raft_node_step_edge_cases_and_propose_not_leader() {
     };
     let commit_pkt = create_append_entries_packet(NodeId(1), &commit_hdr, &[]).unwrap();
     let actions = node.step(NodeId(2), &commit_pkt).unwrap();
-    assert!(actions
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // Compact watermark
     assert!(node.compact_watermark(LogIndex(1)).is_ok());
@@ -772,8 +783,12 @@ fn test_types_and_framing() {
     assert_eq!(MsgType::from_u16(4), Some(MsgType::AppendEntriesReply));
     assert_eq!(MsgType::from_u16(5), Some(MsgType::HeartbeatArgs));
     assert_eq!(MsgType::from_u16(6), Some(MsgType::HeartbeatReply));
-    assert_eq!(MsgType::from_u16(7), None);
+    assert_eq!(MsgType::from_u16(7), Some(MsgType::ClientProposal));
+    assert_eq!(MsgType::from_u16(8), Some(MsgType::ClientProposalReply));
+    assert_eq!(MsgType::from_u16(9), None);
     assert_eq!(MsgType::RequestVoteArgs.to_u16(), 1);
+    assert_eq!(MsgType::ClientProposal.to_u16(), 7);
+    assert_eq!(MsgType::ClientProposalReply.to_u16(), 8);
 }
 
 #[test]
@@ -832,9 +847,11 @@ fn test_raft_node_detailed_branches() {
     let ae_pkt2 = create_append_entries_packet(NodeId(1), &ae_hdr, &[]).unwrap();
     let actions2 = node.step(NodeId(2), &ae_pkt2).unwrap();
     // Does not produce ApplyEntries because commit_index is already 1
-    assert!(!actions2
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        !actions2
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // 6. Step AppendEntriesReply when Follower receives it (role != Leader)
     let ae_reply_pkt =
@@ -846,15 +863,17 @@ fn test_raft_node_detailed_branches() {
     // 7. Step AppendEntriesReply when Leader receives success reply, but commit advancement is None
     node.election.role = Role::Leader;
     let _ = node.storage.append_entry(Term(4), b"new_entry").unwrap(); // index 2
-                                                                       // Peer 2 acknowledges index 2, but peers 3,4,5 are at 0 (only 2 nodes have index 2 out of 5, quorum needs 3)
+    // Peer 2 acknowledges index 2, but peers 3,4,5 are at 0 (only 2 nodes have index 2 out of 5, quorum needs 3)
     let ae_reply_pkt2 =
         create_append_entries_reply_packet(NodeId(2), NodeId(1), Term(4), true, LogIndex(2))
             .unwrap();
     let actions4 = node.step(NodeId(2), &ae_reply_pkt2).unwrap();
     // Does not advance commit index
-    assert!(!actions4
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        !actions4
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // 8. Higher term causes leader to step down to follower
     node.election.role = Role::Leader;
@@ -972,4 +991,405 @@ fn test_replication_evaluator_remaining_branches() {
     let res = evaluate_follower_append_entries(&hdr_no_commit, &[], &mut storage, &mut commit);
     assert!(matches!(res, FollowerAppendResult::Success { .. }));
     assert_eq!(commit, LogIndex(2));
+}
+
+#[test]
+fn test_client_and_server_error_and_config_branches() {
+    use flotilla::client::{ClientConfig, ClientError, ProposalResult};
+    use flotilla::server::{ServerConfig, ServerError};
+    use std::io;
+
+    // ClientError variants and Display
+    let e_timeout = ClientError::Timeout;
+    assert_eq!(format!("{e_timeout}"), "Operation timed out");
+
+    let io_err = io::Error::new(io::ErrorKind::ConnectionRefused, "refused");
+    let e_io: ClientError = io_err.into();
+    assert!(format!("{e_io}").contains("I/O error"));
+
+    let codec_err = CodecError::InvalidMagic(0x1234);
+    let e_codec: ClientError = codec_err.into();
+    assert!(format!("{e_codec}").contains("Codec error"));
+
+    let e_not_leader = ClientError::NotLeader {
+        leader_id: Some(NodeId(2)),
+    };
+    assert!(format!("{e_not_leader}").contains("Node is not leader, leader is: Some(NodeId(2))"));
+
+    let e_no_endpoints = ClientError::NoEndpoints;
+    assert_eq!(format!("{e_no_endpoints}"), "No target endpoints provided");
+
+    let e_conn = ClientError::ConnectionFailed("bad ip".into());
+    assert_eq!(format!("{e_conn}"), "Connection failed: bad ip");
+
+    let e_rpc = ClientError::RpcFailed("rpc err".into());
+    assert_eq!(format!("{e_rpc}"), "RPC failed: rpc err");
+
+    // ClientError std::error::Error trait
+    use std::error::Error;
+    assert!(e_timeout.source().is_none());
+
+    // ProposalResult constructors
+    let pr_ok = ProposalResult::success(LogIndex(10), Term(2), NodeId(1));
+    assert!(pr_ok.is_success());
+    assert_eq!(pr_ok.index, LogIndex(10));
+    assert_eq!(pr_ok.term, Term(2));
+    assert_eq!(pr_ok.leader_id, Some(NodeId(1)));
+
+    let pr_fail = ProposalResult::failure(Some(NodeId(3)));
+    assert!(!pr_fail.is_success());
+    assert_eq!(pr_fail.index, LogIndex::ZERO);
+    assert_eq!(pr_fail.leader_id, Some(NodeId(3)));
+
+    // ClientConfig builders
+    let mut cfg = ClientConfig::default();
+    assert_eq!(cfg.retry_attempts, 3);
+    cfg = ClientConfig::new(vec!["127.0.0.1:8000".into()]);
+    cfg = cfg.with_timeout(std::time::Duration::from_millis(100));
+    cfg = cfg.with_retries(5);
+    assert_eq!(cfg.retry_attempts, 5);
+    assert_eq!(cfg.timeout, std::time::Duration::from_millis(100));
+    assert_eq!(cfg.endpoints, vec!["127.0.0.1:8000"]);
+
+    // ServerError variants and Display
+    let s_io: ServerError = io::Error::new(io::ErrorKind::AddrInUse, "in use").into();
+    assert!(format!("{s_io}").contains("Server I/O error"));
+
+    let s_bind = ServerError::BindFailed("could not bind".into());
+    assert_eq!(format!("{s_bind}"), "Failed to bind server: could not bind");
+
+    let s_closed = ServerError::Closed;
+    assert_eq!(format!("{s_closed}"), "Server listener closed");
+    assert!(s_closed.source().is_none());
+
+    // ServerConfig
+    let s_addr: std::net::SocketAddr = "127.0.0.1:9099".parse().unwrap();
+    let sc = ServerConfig::new(s_addr).with_max_connections(256);
+    assert_eq!(sc.bind_addr, s_addr);
+    assert_eq!(sc.max_connections, 256);
+}
+
+#[cfg(feature = "client-tcp")]
+#[tokio::test]
+async fn test_tcp_framing_edge_cases() {
+    use flotilla::client::tcp::framing::{read_packet_frame, write_packet_frame};
+    use flotilla::codec::{HEADER_SIZE, MAGIC, PacketHeader};
+    use zerocopy::IntoBytes;
+
+    // Buffer smaller than HEADER_SIZE
+    let mut small_buf = [0u8; 10];
+    let mut empty_stream = &[][..];
+    let res = read_packet_frame(&mut empty_stream, &mut small_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+    // Invalid magic bytes
+    let invalid_hdr = PacketHeader {
+        magic: 0xDEADBEEF,
+        version: 1,
+        msg_type: 0,
+        sender_id: NodeId(0),
+        receiver_id: NodeId(0),
+        term: Term::ZERO,
+        checksum: 0,
+        payload_len: 4,
+    };
+    let mut hdr_bytes = invalid_hdr.as_bytes().to_vec();
+    hdr_bytes.extend_from_slice(&[1, 2, 3, 4]);
+    let mut stream = &hdr_bytes[..];
+    let mut full_buf = [0u8; 64];
+    let res = read_packet_frame(&mut stream, &mut full_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+
+    // Payload exceeding destination buffer
+    let big_payload_hdr = PacketHeader {
+        magic: MAGIC,
+        version: 1,
+        msg_type: 0,
+        sender_id: NodeId(0),
+        receiver_id: NodeId(0),
+        term: Term::ZERO,
+        checksum: 0,
+        payload_len: 1000,
+    };
+    let mut stream2 = big_payload_hdr.as_bytes();
+    let mut limited_buf = [0u8; 128];
+    let res = read_packet_frame(&mut stream2, &mut limited_buf).await;
+    assert!(res.is_err());
+    assert_eq!(res.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+
+    // Successful write and read
+    let valid_hdr = PacketHeader {
+        magic: MAGIC,
+        version: 1,
+        msg_type: 7,
+        sender_id: NodeId(1),
+        receiver_id: NodeId(2),
+        term: Term(1),
+        checksum: crc32fast::Hasher::new().finalize(),
+        payload_len: 4,
+    };
+    let mut packet = valid_hdr.as_bytes().to_vec();
+    packet.extend_from_slice(&[10, 20, 30, 40]);
+
+    let mut out_stream = Vec::new();
+    write_packet_frame(&mut out_stream, &packet).await.unwrap();
+    assert_eq!(out_stream, packet);
+
+    let mut in_stream = &out_stream[..];
+    let mut read_buf = [0u8; 64];
+    let n = read_packet_frame(&mut in_stream, &mut read_buf)
+        .await
+        .unwrap();
+    assert_eq!(n, HEADER_SIZE + 4);
+    assert_eq!(&read_buf[..n], &packet[..]);
+}
+
+#[test]
+fn test_raft_node_all_remaining_branches() {
+    use flotilla::message::ClientProposalReply;
+    use zerocopy::IntoBytes;
+
+    let config = RaftConfig {
+        node_id: NodeId(1),
+        peers: vec![NodeId(2), NodeId(3)],
+        election_timeout_ticks: 10,
+        heartbeat_interval_ticks: 2,
+    };
+    let mut node = RaftNode::<32, 64>::new(config);
+
+    // 1. MsgType::ClientProposal when Follower and voted_for != NodeId::NONE
+    node.election.voted_for = NodeId(2);
+    let mut prop_buf = [0u8; 128];
+    let len = flotilla::codec::encode_client_proposal(
+        &mut prop_buf,
+        NodeId(0),
+        NodeId(1),
+        Term(0),
+        b"client_cmd",
+    )
+    .unwrap();
+    let acts = node.step(NodeId(0), &prop_buf[..len]).unwrap();
+    assert_eq!(acts.len(), 1);
+    if let OutboundMessage::SendPacket { packet, .. } = &acts[0] {
+        let (_, p) = decode_packet(packet).unwrap();
+        let reply = ClientProposalReply::read_from_prefix(p).unwrap().0;
+        assert!(!reply.is_success());
+        assert_eq!(reply.leader_id, NodeId(2));
+    }
+
+    // 2. MsgType::ClientProposalReply does nothing
+    let reply = ClientProposalReply {
+        success: 1,
+        _pad: [0; 7],
+        index: LogIndex(1),
+        term: Term(1),
+        leader_id: NodeId(1),
+    };
+    let mut reply_buf = [0u8; 128];
+    let rlen = flotilla::codec::encode_client_proposal_reply(
+        &mut reply_buf,
+        NodeId(2),
+        NodeId(1),
+        Term(1),
+        &reply,
+    )
+    .unwrap();
+    let acts2 = node.step(NodeId(2), &reply_buf[..rlen]).unwrap();
+    assert!(acts2.is_empty());
+
+    // 3. MsgType::HeartbeatArgs does nothing
+    let hb_hdr = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::HeartbeatArgs as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(1),
+        checksum: 0,
+        payload_len: 0,
+    };
+    let mut hb_buf = [0u8; HEADER_SIZE];
+    encode_packet_header(&mut hb_buf, &hb_hdr).unwrap();
+    let acts3 = node.step(NodeId(2), &hb_buf).unwrap();
+    assert!(acts3.is_empty());
+
+    // 4. Short payload for RequestVoteArgs, RequestVoteReply, AppendEntriesArgs
+    for mtype in [
+        MsgType::RequestVoteArgs,
+        MsgType::RequestVoteReply,
+        MsgType::AppendEntriesArgs,
+    ] {
+        let hdr = PacketHeader {
+            magic: MAGIC,
+            version: PROTOCOL_VERSION,
+            msg_type: mtype as u16,
+            sender_id: NodeId(2),
+            receiver_id: NodeId(1),
+            term: Term(1),
+            checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+            payload_len: 3,
+        };
+        let mut short_pkt = [0u8; HEADER_SIZE + 3];
+        encode_packet_header(&mut short_pkt, &hdr).unwrap();
+        short_pkt[HEADER_SIZE..].copy_from_slice(&[1, 2, 3]);
+        assert_eq!(
+            node.step(NodeId(2), &short_pkt),
+            Err(EngineError::InvalidPacket)
+        );
+    }
+
+    // 4b. Short payload for AppendEntriesReply when Leader
+    node.election.role = Role::Leader;
+    let hdr_aer = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::AppendEntriesReply as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(1),
+        checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+        payload_len: 3,
+    };
+    let mut short_aer_pkt = [0u8; HEADER_SIZE + 3];
+    encode_packet_header(&mut short_aer_pkt, &hdr_aer).unwrap();
+    short_aer_pkt[HEADER_SIZE..].copy_from_slice(&[1, 2, 3]);
+    assert_eq!(
+        node.step(NodeId(2), &short_aer_pkt),
+        Err(EngineError::InvalidPacket)
+    );
+    node.election.role = Role::Follower;
+
+    // 5. evaluate_follower_append_entries returning Rejected in RaftNode::step
+    let gap_hdr = AppendEntriesHeader {
+        term: Term(1),
+        leader_id: NodeId(2),
+        prev_log_index: LogIndex(10),
+        prev_log_term: Term(1),
+        leader_commit: LogIndex(0),
+        entries_count: 0,
+        _pad: [0; 4],
+    };
+    let gap_pkt = create_append_entries_packet(NodeId(1), &gap_hdr, &[]).unwrap();
+    let gap_acts = node.step(NodeId(2), &gap_pkt).unwrap();
+    assert_eq!(gap_acts.len(), 1);
+    if let OutboundMessage::SendPacket { packet, .. } = &gap_acts[0] {
+        let (_, p) = decode_packet(packet).unwrap();
+        let rep = AppendEntriesReply::read_from_prefix(p).unwrap().0;
+        assert!(!rep.is_success());
+    }
+
+    // 6. Higher term in packet header causes Leader to StepDown in step()
+    node.election.role = Role::Leader;
+    node.election.current_term = Term(2);
+    let step_down_reply = AppendEntriesReply {
+        term: Term(5),
+        follower_id: NodeId(2),
+        success: 0,
+        match_index: LogIndex::ZERO,
+        _pad: [0; 7],
+    };
+    let high_hdr = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::AppendEntriesReply as u16,
+        sender_id: NodeId(2),
+        receiver_id: NodeId(1),
+        term: Term(5),
+        checksum: flotilla::codec::calculate_crc32(step_down_reply.as_bytes()),
+        payload_len: 32,
+    };
+    let mut high_pkt = [0u8; HEADER_SIZE + 32];
+    encode_packet_header(&mut high_pkt, &high_hdr).unwrap();
+    high_pkt[HEADER_SIZE..].copy_from_slice(step_down_reply.as_bytes());
+    let _ = node.step(NodeId(2), &high_pkt).unwrap();
+    assert_eq!(node.role(), Role::Follower);
+    assert_eq!(node.current_term(), Term(5));
+
+    // 7. broadcast_heartbeats when entry_at returns Some entry
+    node.election.role = Role::Leader;
+    let _ = node.storage.append_entry(Term(5), b"entry").unwrap();
+    node.progress.reset_all_next_indices(LogIndex(0));
+    let msgs = node.broadcast_heartbeats();
+    assert!(!msgs.is_empty());
+}
+
+#[test]
+fn test_commit_and_replication_extra_branches() {
+    use flotilla::codec::encode_client_proposal;
+    use flotilla::codec::encode_client_proposal_reply;
+    use flotilla::message::ClientProposalReply;
+
+    // 1. Commit advancement with > 16 nodes -> returns None
+    let many = vec![LogIndex(1); 17];
+    assert_eq!(
+        evaluate_commit_advancement(&many, LogIndex::ZERO, Term(1), |_| Some(Term(1))),
+        None
+    );
+
+    // 2. Commit advancement candidate > current_commit, but term_lookup is different term
+    let three = [LogIndex(2), LogIndex(2), LogIndex(2)];
+    assert_eq!(
+        evaluate_commit_advancement(&three, LogIndex(1), Term(2), |_| Some(Term(1))),
+        None
+    );
+
+    // 3. Commit advancement candidate > current_commit, but term_lookup is None
+    assert_eq!(
+        evaluate_commit_advancement(&three, LogIndex(1), Term(2), |_| None),
+        None
+    );
+
+    // 4. Replication evaluator: leader_commit > current_commit, but min_commit <= current_commit
+    let mut storage: RingBufferLogStorage<4, 16> = RingBufferLogStorage::default();
+    storage.append_entry(Term(1), b"e1").unwrap();
+    let mut commit = LogIndex(2);
+    let hdr = AppendEntriesHeader {
+        term: Term(1),
+        leader_id: NodeId(1),
+        prev_log_index: LogIndex(1),
+        prev_log_term: Term(1),
+        leader_commit: LogIndex(5),
+        entries_count: 0,
+        _pad: [0; 4],
+    };
+    let _ = evaluate_follower_append_entries(&hdr, &[], &mut storage, &mut commit);
+    assert_eq!(commit, LogIndex(2));
+
+    // 5. Codec buffer too small for client proposal and reply
+    let mut small_buf = [0u8; 10];
+    assert_eq!(
+        encode_client_proposal(&mut small_buf, NodeId(1), NodeId(2), Term(1), b"data"),
+        Err(CodecError::BufferTooSmall)
+    );
+    let rep = ClientProposalReply {
+        success: 1,
+        _pad: [0; 7],
+        index: LogIndex(1),
+        term: Term(1),
+        leader_id: NodeId(1),
+    };
+    assert_eq!(
+        encode_client_proposal_reply(&mut small_buf, NodeId(1), NodeId(2), Term(1), &rep),
+        Err(CodecError::BufferTooSmall)
+    );
+
+    // 6. ElectionState: can_vote is true, but log_ok is false
+    let cfg = ElectionConfig {
+        node_id: NodeId(1),
+        cluster_size: 2,
+        election_timeout_ticks: 10,
+        heartbeat_interval_ticks: 2,
+    };
+    let mut state = ElectionState::new(cfg);
+    let args = RequestVoteArgs {
+        term: Term(2),
+        candidate_id: NodeId(2),
+        last_log_index: LogIndex(5),
+        last_log_term: Term(1),
+    };
+    let rep = state.handle_request_vote(&args, Term(2), LogIndex(5));
+    assert_eq!(rep.vote_granted, 0);
+    assert_eq!(state.voted_for, NodeId::NONE);
 }

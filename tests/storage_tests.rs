@@ -1,4 +1,4 @@
-use flotilla::storage::ring_buffer::{compute_slot_index, RingBufferLogStorage, StorageError};
+use flotilla::storage::ring_buffer::{RingBufferLogStorage, StorageError, compute_slot_index};
 use flotilla::types::{LogIndex, Term};
 
 #[test]
@@ -10,7 +10,9 @@ fn test_ring_buffer_append_and_retrieve() {
     assert!(storage.is_empty());
 
     let payload1 = b"command_1";
-    let idx1 = storage.append_entry(Term(1), payload1).expect("Append should succeed");
+    let idx1 = storage
+        .append_entry(Term(1), payload1)
+        .expect("Append should succeed");
     assert_eq!(idx1, LogIndex(1));
     assert_eq!(storage.last_index(), LogIndex(1));
     assert_eq!(storage.term_at(LogIndex(1)), Some(Term(1)));
@@ -19,7 +21,9 @@ fn test_ring_buffer_append_and_retrieve() {
     assert_eq!(entry1.payload_bytes(), payload1);
 
     let payload2 = b"command_2";
-    let idx2 = storage.append_entry(Term(1), payload2).expect("Append should succeed");
+    let idx2 = storage
+        .append_entry(Term(1), payload2)
+        .expect("Append should succeed");
     assert_eq!(idx2, LogIndex(2));
     assert_eq!(storage.last_index(), LogIndex(2));
     assert_eq!(storage.term_at(LogIndex(2)), Some(Term(1)));
@@ -65,7 +69,9 @@ fn test_ring_buffer_compaction_and_wrap_around() {
     assert_eq!(err, Err(StorageError::BufferFull));
 
     // Compact up to index 2
-    storage.compact_prefix(LogIndex(2)).expect("Compaction should succeed");
+    storage
+        .compact_prefix(LogIndex(2))
+        .expect("Compaction should succeed");
     assert_eq!(storage.first_index(), LogIndex(3));
     assert_eq!(storage.entry_at(LogIndex(1)), None);
     assert_eq!(storage.entry_at(LogIndex(2)), None);

@@ -36,26 +36,20 @@ fn test_evaluate_commit_advancement_current_term_only() {
     let match_indices = [LogIndex(15), LogIndex(15), LogIndex(10)];
 
     // Case 1: Entry 15 is from current term 2 -> commit advances to 15
-    let new_commit = evaluate_commit_advancement(
-        &match_indices,
-        current_commit,
-        current_term,
-        |idx| {
+    let new_commit =
+        evaluate_commit_advancement(&match_indices, current_commit, current_term, |idx| {
             if idx == LogIndex(15) {
                 Some(Term(2))
             } else {
                 Some(Term(1))
             }
-        },
-    );
+        });
     assert_eq!(new_commit, Some(LogIndex(15)));
 
     // Case 2: Entry 15 is from older term 1 -> Raft prohibits committing older terms directly!
-    let blocked_commit = evaluate_commit_advancement(
-        &match_indices,
-        current_commit,
-        current_term,
-        |_idx| Some(Term(1)),
-    );
+    let blocked_commit =
+        evaluate_commit_advancement(&match_indices, current_commit, current_term, |_idx| {
+            Some(Term(1))
+        });
     assert_eq!(blocked_commit, None);
 }

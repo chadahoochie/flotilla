@@ -14,10 +14,17 @@ impl std::fmt::Display for StorageError {
         match self {
             Self::BufferFull => write!(f, "ring buffer storage is full; need compaction"),
             Self::PayloadTooLarge { max, actual } => {
-                write!(f, "entry payload too large: max {max} bytes, got {actual} bytes")
+                write!(
+                    f,
+                    "entry payload too large: max {max} bytes, got {actual} bytes"
+                )
             }
             Self::IndexOutOfBounds { index } => {
-                write!(f, "requested log index {} is out of retained bounds", index.0)
+                write!(
+                    f,
+                    "requested log index {} is out of retained bounds",
+                    index.0
+                )
             }
             Self::CompactionIndexTooHigh { watermark, last } => {
                 write!(

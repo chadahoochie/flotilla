@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
 use flotilla::codec::{decode_packet, encode_request_vote_args, verify_checksum};
 use flotilla::commit::evaluate_commit_advancement;
 use flotilla::message::RequestVoteArgs;
@@ -14,7 +14,8 @@ pub fn bench_codec(c: &mut Criterion) {
         last_log_term: Term(9),
     };
     let mut buf = [0u8; 128];
-    let written = encode_request_vote_args(&mut buf, NodeId(1), NodeId(2), Term(10), &args).unwrap();
+    let written =
+        encode_request_vote_args(&mut buf, NodeId(1), NodeId(2), Term(10), &args).unwrap();
 
     group.throughput(Throughput::Bytes(written as u64));
 
@@ -56,7 +57,9 @@ pub fn bench_storage(c: &mut Criterion) {
                 let _ = storage.compact_prefix(LogIndex(last.0 - 256));
             }
             term += 1;
-            storage.append_entry(Term(term), black_box(payload)).unwrap()
+            storage
+                .append_entry(Term(term), black_box(payload))
+                .unwrap()
         });
     });
 
@@ -65,9 +68,7 @@ pub fn bench_storage(c: &mut Criterion) {
         for _i in 1..=512 {
             storage.append_entry(Term(1), payload).unwrap();
         }
-        b.iter(|| {
-            black_box(storage.entry_at(black_box(LogIndex(256))))
-        });
+        b.iter(|| black_box(storage.entry_at(black_box(LogIndex(256)))));
     });
 
     group.finish();

@@ -3,7 +3,19 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 /// Identifier for a node in the Raft cluster.
 #[repr(transparent)]
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, FromBytes, IntoBytes, Immutable, KnownLayout,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    FromBytes,
+    IntoBytes,
+    Immutable,
+    KnownLayout,
 )]
 pub struct NodeId(pub u64);
 

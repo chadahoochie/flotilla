@@ -127,7 +127,16 @@ fn test_3_node_cluster_udp_loopback() {
         }
     }
 
-    assert!(committed, "Command should be replicated and committed via UDP");
-    assert_eq!(node1.storage.entry_at(LogIndex(1)).unwrap().payload_bytes(), cmd);
-    assert_eq!(node2.storage.entry_at(LogIndex(1)).unwrap().payload_bytes(), cmd);
+    assert!(
+        committed,
+        "Command should be replicated and committed via UDP"
+    );
+    assert_eq!(
+        node1.storage.entry_at(LogIndex(1)).unwrap().payload_bytes(),
+        cmd
+    );
+    assert_eq!(
+        node2.storage.entry_at(LogIndex(1)).unwrap().payload_bytes(),
+        cmd
+    );
 }

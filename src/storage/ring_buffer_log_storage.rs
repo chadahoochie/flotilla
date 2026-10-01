@@ -107,11 +107,7 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RingBufferLogStorage<CAPAC
     }
 
     /// Append a new log entry to the buffer.
-    pub fn append_entry(
-        &mut self,
-        term: Term,
-        payload: &[u8],
-    ) -> Result<LogIndex, StorageError> {
+    pub fn append_entry(&mut self, term: Term, payload: &[u8]) -> Result<LogIndex, StorageError> {
         if payload.len() > MAX_PAYLOAD {
             return Err(StorageError::PayloadTooLarge {
                 max: MAX_PAYLOAD,

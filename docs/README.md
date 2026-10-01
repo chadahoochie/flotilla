@@ -2,6 +2,15 @@
 
 Flotilla is a zero-allocation, sans-I/O Raft consensus library implemented in Safe Rust (Rust 1.98+ / Edition 2024).
 
+For the top-level repository overview, see [**`README.md`**](../README.md).  
+For the complete engineering and code quality specification, see [**`CODING_STANDARDS.md`**](../CODING_STANDARDS.md).
+
+## Non-Negotiable Coding Standards
+1. **TDD (Red -> Green -> Refactor)**: Write failing tests first. Heavily prioritize the **Refactor** step to eliminate allocations, verify cacheline alignment, enforce type-per-file, and eliminate clippy warnings.
+2. **Zero Allocation**: Constant-memory execution along all steady-state consensus hot paths using compile-time power-of-two circular buffers, `zerocopy 0.8`, and cacheline alignment (`#[repr(align(64))]`).
+3. **Type-per-File Decomposition**: Every struct, enum, and trait resides in its own dedicated, snake_case source file.
+4. **No Private Helper Methods**: Inherent `impl` blocks prohibit private methods. All logic is decomposed into crate-visible standalone pure functions or dedicated types for 100% isolated unit testability.
+
 ## Key Features
 - **Sans-I/O Architecture**: The consensus state engine has no socket handles, file descriptors, or timer threads. It is stepped purely via in-memory events and manual ticks.
 - **Zero-Allocation Execution**: Constant-memory execution along hot paths using static circular arrays and borrowing slices.
@@ -91,10 +100,22 @@ let mut node = RaftNode::<1024>::new(config);
 node.tick();
 ```
 
-## Running Tests & Benchmarks
+## Running Tests & Quality Gates
 
 ```bash
+# Run all unit and integration tests
 cargo test --all-targets
+
+# Run zero-allocation hot path verification test suite
+cargo test --test zero_alloc_tests
+
+# Enforce coding standards (no-private-helpers, type-per-file)
+python3 .github/scripts/check_coding_standards.py
+cargo test --test coding_standards_tests
+
+# Run performance benchmarks
 cargo bench
+
+# Check for clippy warnings
 cargo clippy --all-targets -- -D warnings
 ```

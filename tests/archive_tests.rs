@@ -20,7 +20,9 @@ fn test_null_archive_sink() {
         },
     ];
 
-    let written = sink.write_entries(&entries).expect("Null sink should succeed");
+    let written = sink
+        .write_entries(&entries)
+        .expect("Null sink should succeed");
     assert_eq!(written, 2);
     sink.flush().expect("Flush should succeed");
 }
@@ -86,14 +88,20 @@ fn test_archive_pipeline_drains_and_compacts_storage() {
         });
     }
 
-    pipeline.enqueue_batch(&batch).expect("Enqueue should succeed");
-    pipeline.drain_and_persist().expect("Persist should succeed");
+    pipeline
+        .enqueue_batch(&batch)
+        .expect("Enqueue should succeed");
+    pipeline
+        .drain_and_persist()
+        .expect("Persist should succeed");
 
     let persisted = pipeline.persisted_watermark();
     assert_eq!(persisted, LogIndex(4));
 
     // Storage can now compact prefix up to watermark
-    storage.compact_prefix(persisted).expect("Compaction should succeed");
+    storage
+        .compact_prefix(persisted)
+        .expect("Compaction should succeed");
     assert_eq!(storage.first_index(), LogIndex(5));
     assert_eq!(storage.entry_at(LogIndex(1)), None);
     assert_eq!(storage.entry_at(LogIndex(4)), None);

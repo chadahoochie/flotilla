@@ -3,7 +3,19 @@ use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 /// 1-based log index in the Raft replicated log.
 #[repr(transparent)]
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, FromBytes, IntoBytes, Immutable, KnownLayout,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Default,
+    FromBytes,
+    IntoBytes,
+    Immutable,
+    KnownLayout,
 )]
 pub struct LogIndex(pub u64);
 
