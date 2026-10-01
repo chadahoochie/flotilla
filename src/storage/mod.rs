@@ -7,6 +7,6 @@ pub mod storage_error;
 
 pub use log_slot::LogSlot;
 pub use ring_buffer_log_storage::{
-    compute_slot_index, is_buffer_full, is_index_in_retained_range, RingBufferLogStorage,
+    RingBufferLogStorage, compute_slot_index, is_buffer_full, is_index_in_retained_range,
 };
 pub use storage_error::StorageError;

@@ -17,10 +17,19 @@ impl std::fmt::Display for CodecError {
             Self::InvalidMagic(m) => write!(f, "invalid magic: 0x{m:08X}"),
             Self::UnsupportedVersion(v) => write!(f, "unsupported protocol version: {v}"),
             Self::PayloadLengthMismatch { expected, actual } => {
-                write!(f, "payload length mismatch: header={expected}, actual={actual}")
+                write!(
+                    f,
+                    "payload length mismatch: header={expected}, actual={actual}"
+                )
             }
-            Self::ChecksumMismatch { header_crc, computed_crc } => {
-                write!(f, "checksum mismatch: expected 0x{header_crc:08X}, got 0x{computed_crc:08X}")
+            Self::ChecksumMismatch {
+                header_crc,
+                computed_crc,
+            } => {
+                write!(
+                    f,
+                    "checksum mismatch: expected 0x{header_crc:08X}, got 0x{computed_crc:08X}"
+                )
             }
             Self::InvalidMessageType(t) => write!(f, "invalid message type code: {t}"),
             Self::SerializationError => write!(f, "failed to serialize message payload"),

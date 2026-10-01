@@ -1,7 +1,7 @@
 use flotilla::codec::{
-    decode_packet, encode_append_entries, encode_append_entries_reply,
-    encode_request_vote_args, encode_request_vote_reply, verify_checksum, PacketHeader,
-    HEADER_SIZE, MAGIC, PROTOCOL_VERSION,
+    HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, decode_packet, encode_append_entries,
+    encode_append_entries_reply, encode_request_vote_args, encode_request_vote_reply,
+    verify_checksum,
 };
 use flotilla::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
@@ -26,14 +26,8 @@ fn test_request_vote_roundtrip() {
     };
 
     let mut buf = [0u8; 128];
-    let written = encode_request_vote_args(
-        &mut buf,
-        NodeId(7),
-        NodeId(2),
-        Term(42),
-        &args,
-    )
-    .expect("Encoding should succeed");
+    let written = encode_request_vote_args(&mut buf, NodeId(7), NodeId(2), Term(42), &args)
+        .expect("Encoding should succeed");
 
     assert!(written >= HEADER_SIZE + std::mem::size_of::<RequestVoteArgs>());
 
@@ -60,14 +54,8 @@ fn test_request_vote_reply_roundtrip() {
     };
 
     let mut buf = [0u8; 128];
-    let written = encode_request_vote_reply(
-        &mut buf,
-        NodeId(2),
-        NodeId(7),
-        Term(42),
-        &reply,
-    )
-    .expect("Encoding should succeed");
+    let written = encode_request_vote_reply(&mut buf, NodeId(2), NodeId(7), Term(42), &reply)
+        .expect("Encoding should succeed");
 
     let (header, payload) = decode_packet(&buf[..written]).expect("Decoding should succeed");
     assert_eq!(header.msg_type, MsgType::RequestVoteReply as u16);
@@ -123,14 +111,8 @@ fn test_append_entries_reply_roundtrip() {
     };
 
     let mut buf = [0u8; 128];
-    let written = encode_append_entries_reply(
-        &mut buf,
-        NodeId(2),
-        NodeId(1),
-        Term(10),
-        &reply,
-    )
-    .expect("Encode should succeed");
+    let written = encode_append_entries_reply(&mut buf, NodeId(2), NodeId(1), Term(10), &reply)
+        .expect("Encode should succeed");
 
     let (header, payload) = decode_packet(&buf[..written]).expect("Decode should succeed");
     assert_eq!(header.msg_type, MsgType::AppendEntriesReply as u16);
@@ -151,18 +133,14 @@ fn test_corrupted_checksum_fails() {
     };
 
     let mut buf = [0u8; 128];
-    let written = encode_request_vote_args(
-        &mut buf,
-        NodeId(1),
-        NodeId(2),
-        Term(1),
-        &args,
-    )
-    .unwrap();
+    let written = encode_request_vote_args(&mut buf, NodeId(1), NodeId(2), Term(1), &args).unwrap();
 
     // Corrupt one byte of payload
     buf[HEADER_SIZE] ^= 0xFF;
 
     let (header, payload) = decode_packet(&buf[..written]).expect("Header should parse");
-    assert!(!verify_checksum(&header, payload), "Corrupted payload must fail checksum verification");
+    assert!(
+        !verify_checksum(&header, payload),
+        "Corrupted payload must fail checksum verification"
+    );
 }

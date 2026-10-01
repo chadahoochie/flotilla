@@ -1,6 +1,6 @@
 use flotilla::message::AppendEntriesHeader;
 use flotilla::replication::{
-    evaluate_follower_append_entries, FollowerAppendResult, PeerProgressTracker,
+    FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
 use flotilla::storage::ring_buffer::RingBufferLogStorage;
 use flotilla::types::{LogIndex, NodeId, Term};
@@ -44,12 +44,8 @@ fn test_follower_accepts_valid_append_entries() {
     let entries_raw = b"e3";
     let mut current_commit = LogIndex(2);
 
-    let result = evaluate_follower_append_entries(
-        &header,
-        entries_raw,
-        &mut storage,
-        &mut current_commit,
-    );
+    let result =
+        evaluate_follower_append_entries(&header, entries_raw, &mut storage, &mut current_commit);
 
     assert_eq!(
         result,
@@ -78,12 +74,8 @@ fn test_follower_rejects_log_gap_or_term_mismatch() {
     };
 
     let mut current_commit = LogIndex(1);
-    let result_gap = evaluate_follower_append_entries(
-        &header_gap,
-        b"e6",
-        &mut storage,
-        &mut current_commit,
-    );
+    let result_gap =
+        evaluate_follower_append_entries(&header_gap, b"e6", &mut storage, &mut current_commit);
 
     assert_eq!(result_gap, FollowerAppendResult::Rejected);
 
@@ -98,12 +90,8 @@ fn test_follower_rejects_log_gap_or_term_mismatch() {
         _pad: [0; 4],
     };
 
-    let result_mismatch = evaluate_follower_append_entries(
-        &header_mismatch,
-        b"",
-        &mut storage,
-        &mut current_commit,
-    );
+    let result_mismatch =
+        evaluate_follower_append_entries(&header_mismatch, b"", &mut storage, &mut current_commit);
 
     assert_eq!(result_mismatch, FollowerAppendResult::Rejected);
 }

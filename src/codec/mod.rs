@@ -4,7 +4,7 @@ pub mod codec_error;
 pub mod packet_header;
 
 pub use codec_error::CodecError;
-pub use packet_header::{PacketHeader, HEADER_SIZE};
+pub use packet_header::{HEADER_SIZE, PacketHeader};
 
 use crate::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
@@ -42,8 +42,8 @@ pub fn decode_packet(buf: &[u8]) -> Result<(PacketHeader, &[u8]), CodecError> {
         return Err(CodecError::BufferTooSmall);
     }
 
-    let (header, rest) = PacketHeader::read_from_prefix(buf)
-        .map_err(|_| CodecError::SerializationError)?;
+    let (header, rest) =
+        PacketHeader::read_from_prefix(buf).map_err(|_| CodecError::SerializationError)?;
 
     if header.magic != MAGIC {
         return Err(CodecError::InvalidMagic(header.magic));
@@ -63,10 +63,7 @@ pub fn decode_packet(buf: &[u8]) -> Result<(PacketHeader, &[u8]), CodecError> {
 }
 
 /// Encode a raw packet header into the destination buffer.
-pub fn encode_packet_header(
-    buf: &mut [u8],
-    header: &PacketHeader,
-) -> Result<usize, CodecError> {
+pub fn encode_packet_header(buf: &mut [u8], header: &PacketHeader) -> Result<usize, CodecError> {
     if buf.len() < HEADER_SIZE {
         return Err(CodecError::BufferTooSmall);
     }

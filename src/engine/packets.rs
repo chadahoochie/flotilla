@@ -1,10 +1,8 @@
 use crate::codec::{
-    encode_append_entries, encode_append_entries_reply, encode_request_vote_args,
-    encode_request_vote_reply, CodecError, HEADER_SIZE,
+    CodecError, HEADER_SIZE, encode_append_entries, encode_append_entries_reply,
+    encode_request_vote_args, encode_request_vote_reply,
 };
-use crate::message::{
-    AppendEntriesHeader, AppendEntriesReply, RequestVoteArgs, RequestVoteReply,
-};
+use crate::message::{AppendEntriesHeader, AppendEntriesReply, RequestVoteArgs, RequestVoteReply};
 use crate::types::{LogIndex, NodeId, Term};
 
 /// Standalone pure constructor for RequestVote packet envelopes.

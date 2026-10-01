@@ -74,14 +74,8 @@ fn test_all_consensus_hot_paths_zero_allocations() {
     TRACK_ALLOC.store(true, Ordering::SeqCst);
 
     for _ in 0..1000 {
-        let written = encode_request_vote_args(
-            &mut buf,
-            NodeId(1),
-            NodeId(2),
-            Term(10),
-            &args,
-        )
-        .unwrap();
+        let written =
+            encode_request_vote_args(&mut buf, NodeId(1), NodeId(2), Term(10), &args).unwrap();
 
         let (header, payload) = decode_packet(&buf[..written]).unwrap();
         assert!(verify_checksum(&header, payload));
@@ -113,12 +107,8 @@ fn test_all_consensus_hot_paths_zero_allocations() {
 
     let match_indices = [LogIndex(10), LogIndex(10), LogIndex(8)];
     for _ in 0..100 {
-        let _ = evaluate_commit_advancement(
-            &match_indices,
-            LogIndex(5),
-            Term(1),
-            |_| Some(Term(1)),
-        );
+        let _ =
+            evaluate_commit_advancement(&match_indices, LogIndex(5), Term(1), |_| Some(Term(1)));
     }
 
     TRACK_ALLOC.store(false, Ordering::SeqCst);

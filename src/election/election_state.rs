@@ -89,11 +89,7 @@ impl ElectionState {
     }
 
     /// Record a received vote reply from a peer.
-    pub fn handle_vote_reply(
-        &mut self,
-        _from: NodeId,
-        reply: &RequestVoteReply,
-    ) -> ElectionAction {
+    pub fn handle_vote_reply(&mut self, _from: NodeId, reply: &RequestVoteReply) -> ElectionAction {
         if reply.term.0 > self.current_term.0 {
             self.step_down_to_follower(reply.term);
             return ElectionAction::StepDown(reply.term);

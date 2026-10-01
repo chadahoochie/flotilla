@@ -12,7 +12,7 @@ use crate::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
 };
 use crate::replication::{
-    evaluate_follower_append_entries, FollowerAppendResult, PeerProgressTracker,
+    FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
 use crate::storage::ring_buffer::{RingBufferLogStorage, StorageError};
 use crate::types::{LogIndex, NodeId, Role, Term};
@@ -99,7 +99,8 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
         match action {
             ElectionAction::Campaign => self.broadcast_request_vote(),
             ElectionAction::ElectedLeader => {
-                self.progress.reset_all_next_indices(self.storage.last_index());
+                self.progress
+                    .reset_all_next_indices(self.storage.last_index());
                 self.broadcast_heartbeats()
             }
             ElectionAction::HeartbeatTimeout => self.broadcast_heartbeats(),
@@ -163,11 +164,7 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
                 _pad: [0; 4],
             };
 
-            if let Ok(packet) = create_append_entries_packet(
-                *peer,
-                &header,
-                entries_raw,
-            ) {
+            if let Ok(packet) = create_append_entries_packet(*peer, &header, entries_raw) {
                 msgs.push(OutboundMessage::SendPacket { to: *peer, packet });
             }
         }
@@ -235,7 +232,8 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
                     .0;
                 let action = self.election.handle_vote_reply(sender, &reply);
                 if action == ElectionAction::ElectedLeader {
-                    self.progress.reset_all_next_indices(self.storage.last_index());
+                    self.progress
+                        .reset_all_next_indices(self.storage.last_index());
                     actions.extend(self.broadcast_heartbeats());
                 }
             }
@@ -306,10 +304,9 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
 
                         // Evaluate commit index advancement
                         let mut match_buf = [LogIndex::ZERO; 16];
-                        let count = self.progress.collect_all_match_indices(
-                            self.storage.last_index(),
-                            &mut match_buf,
-                        );
+                        let count = self
+                            .progress
+                            .collect_all_match_indices(self.storage.last_index(), &mut match_buf);
 
                         if let Some(new_commit) = evaluate_commit_advancement(
                             &match_buf[..count],

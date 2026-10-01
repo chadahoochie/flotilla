@@ -2,28 +2,29 @@ use flotilla::archive::{
     ArchivePipeline, ArchivedEntry, FileArchiveSink, NullArchiveSink, PipelineError,
 };
 use flotilla::codec::{
-    decode_packet, encode_append_entries, encode_append_entries_reply, encode_packet_header,
-    encode_request_vote_args, encode_request_vote_reply, CodecError, PacketHeader, HEADER_SIZE,
-    MAGIC, PROTOCOL_VERSION,
+    CodecError, HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, decode_packet,
+    encode_append_entries, encode_append_entries_reply, encode_packet_header,
+    encode_request_vote_args, encode_request_vote_reply,
 };
 use flotilla::commit::evaluate_commit_advancement;
 use flotilla::election::{
-    is_log_up_to_date, is_quorum_reached, is_vote_eligible, quorum_size, ElectionAction,
-    ElectionConfig, ElectionState,
+    ElectionAction, ElectionConfig, ElectionState, is_log_up_to_date, is_quorum_reached,
+    is_vote_eligible, quorum_size,
 };
 use flotilla::engine::{
-    create_append_entries_packet, create_append_entries_reply_packet, create_request_vote_packet,
-    create_request_vote_reply_packet, EngineError, OutboundMessage, RaftConfig, RaftNode,
+    EngineError, OutboundMessage, RaftConfig, RaftNode, create_append_entries_packet,
+    create_append_entries_reply_packet, create_request_vote_packet,
+    create_request_vote_reply_packet,
 };
 use flotilla::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
 };
 use flotilla::replication::{
-    evaluate_follower_append_entries, FollowerAppendResult, PeerProgressTracker,
+    FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
 use flotilla::storage::{RingBufferLogStorage, StorageError};
 use flotilla::types::{LogIndex, NodeId, Role, Term};
-use flotilla::udp::framing::{fits_in_mtu, ETHERNET_MTU, IP_UDP_OVERHEAD};
+use flotilla::udp::framing::{ETHERNET_MTU, IP_UDP_OVERHEAD, fits_in_mtu};
 use std::io::Write;
 use zerocopy::FromBytes;
 
@@ -270,22 +271,26 @@ fn test_codec_error_branches_and_buffer_too_small() {
     assert!(
         format!("{}", CodecError::UnsupportedVersion(2)).contains("unsupported protocol version")
     );
-    assert!(format!(
-        "{}",
-        CodecError::PayloadLengthMismatch {
-            expected: 10,
-            actual: 5
-        }
-    )
-    .contains("payload length mismatch"));
-    assert!(format!(
-        "{}",
-        CodecError::ChecksumMismatch {
-            header_crc: 1,
-            computed_crc: 2
-        }
-    )
-    .contains("checksum mismatch"));
+    assert!(
+        format!(
+            "{}",
+            CodecError::PayloadLengthMismatch {
+                expected: 10,
+                actual: 5
+            }
+        )
+        .contains("payload length mismatch")
+    );
+    assert!(
+        format!(
+            "{}",
+            CodecError::ChecksumMismatch {
+                header_crc: 1,
+                computed_crc: 2
+            }
+        )
+        .contains("checksum mismatch")
+    );
     assert!(format!("{}", CodecError::InvalidMessageType(99)).contains("invalid message type"));
     assert!(format!("{}", CodecError::SerializationError).contains("failed to serialize"));
 }
@@ -478,26 +483,30 @@ fn test_packets_and_engine_error_display() {
 
     // StorageError Display
     assert!(format!("{}", StorageError::BufferFull).contains("ring buffer storage is full"));
-    assert!(format!(
-        "{}",
-        StorageError::PayloadTooLarge {
-            max: 10,
-            actual: 20
-        }
-    )
-    .contains("entry payload too large"));
+    assert!(
+        format!(
+            "{}",
+            StorageError::PayloadTooLarge {
+                max: 10,
+                actual: 20
+            }
+        )
+        .contains("entry payload too large")
+    );
     assert!(
         format!("{}", StorageError::IndexOutOfBounds { index: LogIndex(5) })
             .contains("out of retained bounds")
     );
-    assert!(format!(
-        "{}",
-        StorageError::CompactionIndexTooHigh {
-            watermark: LogIndex(10),
-            last: LogIndex(5)
-        }
-    )
-    .contains("cannot exceed last log index"));
+    assert!(
+        format!(
+            "{}",
+            StorageError::CompactionIndexTooHigh {
+                watermark: LogIndex(10),
+                last: LogIndex(5)
+            }
+        )
+        .contains("cannot exceed last log index")
+    );
 }
 
 #[test]
@@ -584,9 +593,11 @@ fn test_raft_node_step_edge_cases_and_propose_not_leader() {
     };
     let commit_pkt = create_append_entries_packet(NodeId(1), &commit_hdr, &[]).unwrap();
     let actions = node.step(NodeId(2), &commit_pkt).unwrap();
-    assert!(actions
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        actions
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // Compact watermark
     assert!(node.compact_watermark(LogIndex(1)).is_ok());
@@ -832,9 +843,11 @@ fn test_raft_node_detailed_branches() {
     let ae_pkt2 = create_append_entries_packet(NodeId(1), &ae_hdr, &[]).unwrap();
     let actions2 = node.step(NodeId(2), &ae_pkt2).unwrap();
     // Does not produce ApplyEntries because commit_index is already 1
-    assert!(!actions2
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        !actions2
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // 6. Step AppendEntriesReply when Follower receives it (role != Leader)
     let ae_reply_pkt =
@@ -846,15 +859,17 @@ fn test_raft_node_detailed_branches() {
     // 7. Step AppendEntriesReply when Leader receives success reply, but commit advancement is None
     node.election.role = Role::Leader;
     let _ = node.storage.append_entry(Term(4), b"new_entry").unwrap(); // index 2
-                                                                       // Peer 2 acknowledges index 2, but peers 3,4,5 are at 0 (only 2 nodes have index 2 out of 5, quorum needs 3)
+    // Peer 2 acknowledges index 2, but peers 3,4,5 are at 0 (only 2 nodes have index 2 out of 5, quorum needs 3)
     let ae_reply_pkt2 =
         create_append_entries_reply_packet(NodeId(2), NodeId(1), Term(4), true, LogIndex(2))
             .unwrap();
     let actions4 = node.step(NodeId(2), &ae_reply_pkt2).unwrap();
     // Does not advance commit index
-    assert!(!actions4
-        .iter()
-        .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. })));
+    assert!(
+        !actions4
+            .iter()
+            .any(|a| matches!(a, OutboundMessage::ApplyEntries { .. }))
+    );
 
     // 8. Higher term causes leader to step down to follower
     node.election.role = Role::Leader;

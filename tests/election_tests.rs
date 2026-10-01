@@ -1,6 +1,6 @@
 use flotilla::election::{
-    is_log_up_to_date, is_quorum_reached, is_vote_eligible, quorum_size, ElectionAction,
-    ElectionConfig, ElectionState,
+    ElectionAction, ElectionConfig, ElectionState, is_log_up_to_date, is_quorum_reached,
+    is_vote_eligible, quorum_size,
 };
 use flotilla::message::{RequestVoteArgs, RequestVoteReply};
 use flotilla::types::{LogIndex, NodeId, Role, Term};
@@ -23,13 +23,38 @@ fn test_quorum_calculation() {
 #[test]
 fn test_log_up_to_date_rule() {
     // Higher term wins regardless of index
-    assert!(is_log_up_to_date(Term(2), LogIndex(1), Term(1), LogIndex(100)));
-    assert!(!is_log_up_to_date(Term(1), LogIndex(100), Term(2), LogIndex(1)));
+    assert!(is_log_up_to_date(
+        Term(2),
+        LogIndex(1),
+        Term(1),
+        LogIndex(100)
+    ));
+    assert!(!is_log_up_to_date(
+        Term(1),
+        LogIndex(100),
+        Term(2),
+        LogIndex(1)
+    ));
 
     // Same term: longer or equal log wins
-    assert!(is_log_up_to_date(Term(2), LogIndex(5), Term(2), LogIndex(4)));
-    assert!(is_log_up_to_date(Term(2), LogIndex(5), Term(2), LogIndex(5)));
-    assert!(!is_log_up_to_date(Term(2), LogIndex(4), Term(2), LogIndex(5)));
+    assert!(is_log_up_to_date(
+        Term(2),
+        LogIndex(5),
+        Term(2),
+        LogIndex(4)
+    ));
+    assert!(is_log_up_to_date(
+        Term(2),
+        LogIndex(5),
+        Term(2),
+        LogIndex(5)
+    ));
+    assert!(!is_log_up_to_date(
+        Term(2),
+        LogIndex(4),
+        Term(2),
+        LogIndex(5)
+    ));
 }
 
 #[test]

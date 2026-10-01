@@ -49,7 +49,11 @@ fn test_3_node_cluster_election_and_proposal() {
     node1.tick();
     let msgs1 = node1.tick();
     assert_eq!(node1.role(), Role::Candidate);
-    assert_eq!(msgs1.len(), 2, "Candidate should send RequestVote to 2 peers");
+    assert_eq!(
+        msgs1.len(),
+        2,
+        "Candidate should send RequestVote to 2 peers"
+    );
 
     // Deliver vote requests to Node 2 and Node 3
     for msg in msgs1 {
@@ -59,11 +63,17 @@ fn test_3_node_cluster_election_and_proposal() {
                     let replies = node2.step(NodeId(1), &packet).unwrap();
                     assert_eq!(replies.len(), 1);
                     // Deliver reply back to Node 1
-                    if let OutboundMessage::SendPacket { packet: reply_pkt, .. } = &replies[0] {
+                    if let OutboundMessage::SendPacket {
+                        packet: reply_pkt, ..
+                    } = &replies[0]
+                    {
                         let n1_actions = node1.step(NodeId(2), reply_pkt).unwrap();
                         // Node 1 should now be leader because it has 2 votes (self + node 2)
                         assert_eq!(node1.role(), Role::Leader);
-                        assert!(!n1_actions.is_empty(), "Leader should immediately send heartbeats");
+                        assert!(
+                            !n1_actions.is_empty(),
+                            "Leader should immediately send heartbeats"
+                        );
                     }
                 } else if to == NodeId(3) {
                     let replies = node3.step(NodeId(1), &packet).unwrap();
@@ -89,7 +99,10 @@ fn test_3_node_cluster_election_and_proposal() {
         {
             let replies = node2.step(NodeId(1), &packet).unwrap();
             assert_eq!(replies.len(), 1);
-            if let OutboundMessage::SendPacket { packet: reply_pkt, .. } = &replies[0] {
+            if let OutboundMessage::SendPacket {
+                packet: reply_pkt, ..
+            } = &replies[0]
+            {
                 let leader_replies = node1.step(NodeId(2), reply_pkt).unwrap();
                 // Majority (Node 1 + Node 2) has replicated -> Entry 1 committed!
                 assert_eq!(node1.commit_index(), LogIndex(1));
