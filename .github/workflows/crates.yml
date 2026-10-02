@@ -1,0 +1,99 @@
+name: Crate Builds & Module Matrix
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-modules:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Sans-I/O Core Engine (No Default Features)
+            flags: --no-default-features
+          - name: Default Client UDP Transport
+            flags: ""
+          - name: TCP Transports (Client & Server)
+            flags: --no-default-features --features tcp
+          - name: gRPC Transports (Client & Server)
+            flags: --no-default-features --features grpc
+          - name: Cosmos DB Archival Offloader
+            flags: --no-default-features --features cosmos
+          - name: Full Suite (All Transports & Offloaders)
+            flags: --all-features
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Protoc (Protobuf Compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      - name: Check compilation
+        run: cargo check ${{ matrix.flags }}
+
+      - name: Run test suite
+        run: cargo test ${{ matrix.flags }} --all-targets
+
+  package-and-lint:
+    name: Crate Packaging & Lint Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain with clippy & rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install Protoc (Protobuf Compiler)
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check code formatting (rustfmt)
+        run: cargo fmt -- --check
+
+      - name: Check clippy lints (-D warnings)
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Verify package dry-run (cargo package)
+        run: cargo package --no-verify
+
+      - name: Verify documentation generation
+        run: cargo doc --all-features --no-deps
+
+      - name: Upload packaged crate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flotilla-crate-package
+          path: target/package/*.crate
+          if-no-files-found: error
+          retention-days: 14

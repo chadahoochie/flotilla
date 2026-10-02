@@ -279,6 +279,51 @@ cargo bench
 
 ---
 
+## 🐳 Deployment & Containerization
+
+### Running Flotilla Server Locally
+The `flotilla-server` executable runs an integrated consensus daemon exposing UDP, TCP, and gRPC transports:
+
+```bash
+# Build release binary
+cargo build --release --bin flotilla-server --features full
+
+# Run node 1 with default transports
+./target/release/flotilla-server \
+  --node-id 1 \
+  --udp-addr 0.0.0.0:9000 \
+  --tcp-addr 0.0.0.0:9001 \
+  --grpc-addr 0.0.0.0:50051 \
+  --peers 2=10.0.0.2:9000,3=10.0.0.3:9000
+```
+
+### Running with Docker
+A multi-stage, non-root container image is published automatically to GitHub Container Registry (`ghcr.io/chadahoochie/flotilla`):
+
+```bash
+# Pull and run container
+docker run -d \
+  --name flotilla-node-1 \
+  -p 9000:9000/udp \
+  -p 9001:9001/tcp \
+  -p 50051:50051/tcp \
+  -e FLOTILLA_NODE_ID=1 \
+  -e FLOTILLA_PEERS="2=10.0.0.2:9000,3=10.0.0.3:9000" \
+  ghcr.io/chadahoochie/flotilla:latest
+```
+
+---
+
+## 🚀 CI/CD Pipelines
+
+GitHub Actions workflows are located in [`.github/workflows/`](file:///home/chad/source/rust/flotilla/.github/workflows/):
+
+- [`coverage.yml`](file:///home/chad/source/rust/flotilla/.github/workflows/coverage.yml): Enforces 85% line and 90% branch coverage gates, zero-allocation tests, and architectural standards on PRs and `main`.
+- [`crates.yml`](file:///home/chad/source/rust/flotilla/.github/workflows/crates.yml): Matrix compilation and test suites across all feature modules (`--no-default-features`, `client-udp`, `tcp`, `grpc`, `cosmos`, `full`), clippy linting, rustfmt checks, and `cargo package` dry-run verification.
+- [`docker-publish.yml`](file:///home/chad/source/rust/flotilla/.github/workflows/docker-publish.yml): Builds multi-arch container image with Docker Buildx and publishes signed images to GitHub Container Registry on pushes to `main` and semantic version tags (`v*`).
+
+---
+
 ## 📁 Repository Map
 
 ```
@@ -286,11 +331,15 @@ flotilla/
 ├── CODING_STANDARDS.md         # Comprehensive standards & architectural invariants
 ├── README.md                   # Primary developer guide & best practices
 ├── Cargo.toml                  # Dependencies, feature flags, profile settings
+├── Dockerfile                  # Multi-stage release container specification
+├── .dockerignore               # Docker build context exclusions
 ├── LICENSE                     # MIT License
 ├── proto/
 │   └── flotilla.proto          # Protocol Buffers definition for gRPC service
 ├── src/
 │   ├── lib.rs                  # Library entrypoint and public module exports
+│   ├── bin/
+│   │   └── flotilla-server.rs  # Integrated server binary daemon (UDP/TCP/gRPC)
 │   ├── commit.rs               # Standalone quorum median commit evaluator
 │   ├── types/                  # Single-type scalar wrappers (NodeId, Term, etc.)
 │   ├── message/                # Wire message structures (RequestVoteArgs, ClientProposalReply, etc.)
@@ -327,7 +376,9 @@ flotilla/
     │   ├── check_coding_standards.py # Automated standards verification script
     │   └── check_coverage.py         # Coverage gate evaluation script
     └── workflows/
-        └── coverage.yml        # GitHub Actions coverage & standards workflow
+        ├── coverage.yml        # GitHub Actions coverage & standards workflow
+        ├── crates.yml          # GitHub Actions crate builds & module matrix
+        └── docker-publish.yml  # GitHub Actions Docker publish to GHCR
 ```
 
 ---

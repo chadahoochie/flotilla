@@ -1,0 +1,9 @@
+target/
+.git/
+.github/
+docs/
+tests/
+coverage/
+*.profraw
+*.profdata
+*.lcov

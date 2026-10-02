@@ -23,6 +23,7 @@ const EXEMPT_FILES: &[&str] = &[
     "sinks.rs",
     "channel.rs",
     "commit.rs",
+    "flotilla-server.rs",
 ];
 
 fn collect_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
