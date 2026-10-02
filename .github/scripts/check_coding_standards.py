@@ -28,6 +28,7 @@ EXEMPT_FILES = {
     "sinks.rs",
     "channel.rs",
     "commit.rs",
+    "flotilla-server.rs",
 }
 
 # Subsystem-specific type-to-file mappings

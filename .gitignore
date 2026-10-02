@@ -17,6 +17,8 @@ target/criterion/
 *.profraw
 *.profdata
 *.lcov
+coverage.json
+coverage_summary.md
 coverage/
 perf.data*
 

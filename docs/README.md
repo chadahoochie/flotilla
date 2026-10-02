@@ -219,6 +219,13 @@ cargo clippy --all-targets --all-features -- -D warnings
 # Verify documentation generation
 cargo doc --all-features --no-deps
 
+# Verify crate packaging
+cargo package --no-verify
+
+# Build release server binary and Docker container
+cargo build --release --bin flotilla-server --features full
+docker build -t flotilla:latest .
+
 # Run performance benchmarks
 cargo bench
 ```
