@@ -167,20 +167,20 @@ Flotilla provides modular feature flags so applications only compile the transpo
 ```toml
 [dependencies]
 # Default: UDP client
-flotilla = "0.1"
+flotilla-raft = "0.1"
 
 # Enable TCP client and server
-# flotilla = { version = "0.1", features = ["tcp"] }
+# flotilla-raft = { version = "0.1", features = ["tcp"] }
 
 # Enable full features (UDP, TCP, gRPC, Cosmos DB offloader)
-# flotilla = { version = "0.1", features = ["full"] }
+# flotilla-raft = { version = "0.1", features = ["full"] }
 ```
 
 ### 2. Basic Engine Instantiation
 
 ```rust
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::types::NodeId;
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::types::NodeId;
 
 // Configure node 1 in a 3-node cluster
 let config = RaftConfig {
@@ -200,7 +200,7 @@ let outbound_messages = node.tick();
 ### 3. Client Proposal Submission
 
 ```rust,ignore
-use flotilla::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
+use flotilla_raft::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
 
 // Submit a proposal over UDP, TCP, or gRPC
 let client = UdpClient::connect("127.0.0.1:9001")?;
@@ -216,8 +216,8 @@ if res.is_success() {
 ### 4. Running a Server Transport Listener
 
 ```rust,ignore
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::server::TcpListener;
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::server::TcpListener;
 use parking_lot::Mutex;
 use std::sync::Arc;
 

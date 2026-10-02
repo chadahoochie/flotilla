@@ -1,5 +1,5 @@
-use flotilla::commit::{calculate_quorum_commit_index, evaluate_commit_advancement};
-use flotilla::types::{LogIndex, Term};
+use flotilla_raft::commit::{calculate_quorum_commit_index, evaluate_commit_advancement};
+use flotilla_raft::types::{LogIndex, Term};
 
 #[test]
 fn test_quorum_median_calculation_3_nodes() {

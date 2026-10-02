@@ -1,5 +1,5 @@
-use flotilla::engine::{OutboundMessage, RaftConfig, RaftNode};
-use flotilla::types::{LogIndex, NodeId, Role, Term};
+use flotilla_raft::engine::{OutboundMessage, RaftConfig, RaftNode};
+use flotilla_raft::types::{LogIndex, NodeId, Role, Term};
 
 #[test]
 fn test_single_node_cluster_elects_itself() {

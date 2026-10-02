@@ -1,5 +1,5 @@
-use flotilla::storage::ring_buffer::{RingBufferLogStorage, StorageError, compute_slot_index};
-use flotilla::types::{LogIndex, Term};
+use flotilla_raft::storage::ring_buffer::{RingBufferLogStorage, StorageError, compute_slot_index};
+use flotilla_raft::types::{LogIndex, Term};
 
 #[test]
 fn test_ring_buffer_append_and_retrieve() {

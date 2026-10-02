@@ -1,12 +1,12 @@
-use flotilla::codec::{
+use flotilla_raft::codec::{
     HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, decode_packet, encode_append_entries,
     encode_append_entries_reply, encode_request_vote_args, encode_request_vote_reply,
     verify_checksum,
 };
-use flotilla::message::{
+use flotilla_raft::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
 };
-use flotilla::types::{LogIndex, NodeId, Term};
+use flotilla_raft::types::{LogIndex, NodeId, Term};
 use zerocopy::FromBytes;
 
 #[test]

@@ -1,9 +1,9 @@
 use criterion::{Criterion, Throughput, black_box, criterion_group, criterion_main};
-use flotilla::codec::{decode_packet, encode_request_vote_args, verify_checksum};
-use flotilla::commit::evaluate_commit_advancement;
-use flotilla::message::RequestVoteArgs;
-use flotilla::storage::ring_buffer::RingBufferLogStorage;
-use flotilla::types::{LogIndex, NodeId, Term};
+use flotilla_raft::codec::{decode_packet, encode_request_vote_args, verify_checksum};
+use flotilla_raft::commit::evaluate_commit_advancement;
+use flotilla_raft::message::RequestVoteArgs;
+use flotilla_raft::storage::ring_buffer::RingBufferLogStorage;
+use flotilla_raft::types::{LogIndex, NodeId, Term};
 
 pub fn bench_codec(c: &mut Criterion) {
     let mut group = c.benchmark_group("codec");

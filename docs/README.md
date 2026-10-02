@@ -133,8 +133,8 @@ Flotilla supports modular compilation flags:
 ### 1. Sans-I/O Engine Instantiation
 
 ```rust
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::types::NodeId;
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::types::NodeId;
 
 // Configure node 1 in a 3-node cluster
 let config = RaftConfig {
@@ -156,7 +156,7 @@ let outbound_messages = node.tick();
 Submitting a proposal using the [`FlotillaClient`](file:///home/chad/source/rust/flotilla/src/client/flotilla_client.rs) interface:
 
 ```rust,ignore
-use flotilla::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
+use flotilla_raft::client::{FlotillaClient, UdpClient, TcpClient, GrpcClient};
 
 // Connect via UDP
 let udp_client = UdpClient::connect("127.0.0.1:9001")?;
@@ -173,8 +173,8 @@ if result.is_success() {
 
 #### Async TCP Server Listener
 ```rust,ignore
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::server::TcpListener;
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::server::TcpListener;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
@@ -185,8 +185,8 @@ let listener = TcpListener::bind("0.0.0.0:9001".parse()?, Arc::clone(&node)).awa
 
 #### HTTP/2 gRPC Service
 ```rust,ignore
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::server::GrpcService;
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::server::GrpcService;
 use parking_lot::Mutex;
 use std::sync::Arc;
 

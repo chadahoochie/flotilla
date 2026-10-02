@@ -100,7 +100,7 @@ jobs:
       - name: Upload packaged crate artifact
         uses: actions/upload-artifact@v4
         with:
-          name: flotilla-crate-package
+          name: flotilla-raft-crate-package
           path: target/package/*.crate
           if-no-files-found: error
           retention-days: 14
