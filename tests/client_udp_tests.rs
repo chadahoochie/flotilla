@@ -1,3 +1,5 @@
+#![cfg(feature = "client-udp")]
+
 use flotilla::client::udp::UdpClient;
 use flotilla::client::{ClientConfig, ClientError, FlotillaClient};
 use flotilla::engine::{RaftConfig, RaftNode};
