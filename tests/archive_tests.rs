@@ -1,7 +1,7 @@
-use flotilla::archive::sinks::{FileArchiveSink, NullArchiveSink};
-use flotilla::archive::{ArchivePipeline, ArchivedEntry, AsyncArchiveSink};
-use flotilla::storage::ring_buffer::RingBufferLogStorage;
-use flotilla::types::{LogIndex, Term};
+use flotilla_raft::archive::sinks::{FileArchiveSink, NullArchiveSink};
+use flotilla_raft::archive::{ArchivePipeline, ArchivedEntry, AsyncArchiveSink};
+use flotilla_raft::storage::ring_buffer::RingBufferLogStorage;
+use flotilla_raft::types::{LogIndex, Term};
 use std::fs;
 
 #[test]

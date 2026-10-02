@@ -1,12 +1,12 @@
 [package]
-name = "flotilla"
+name = "flotilla-raft"
 version = "0.1.0"
 edition = "2024"
 authors = ["Flotilla Contributors"]
 description = "High-Throughput, Low-Latency Sans-I/O Raft in Safe Rust (Rust 1.98+ / Edition 2024)"
 license = "MIT"
 repository = "https://github.com/chadahoochie/flotilla"
-documentation = "https://docs.rs/flotilla"
+documentation = "https://docs.rs/flotilla-raft"
 readme = "README.md"
 
 [dependencies]

@@ -1,30 +1,30 @@
-use flotilla::archive::{
+use flotilla_raft::archive::{
     ArchivePipeline, ArchivedEntry, FileArchiveSink, NullArchiveSink, PipelineError,
 };
-use flotilla::codec::{
+use flotilla_raft::codec::{
     CodecError, HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, decode_packet,
     encode_append_entries, encode_append_entries_reply, encode_packet_header,
     encode_request_vote_args, encode_request_vote_reply,
 };
-use flotilla::commit::evaluate_commit_advancement;
-use flotilla::election::{
+use flotilla_raft::commit::evaluate_commit_advancement;
+use flotilla_raft::election::{
     ElectionAction, ElectionConfig, ElectionState, is_log_up_to_date, is_quorum_reached,
     is_vote_eligible, quorum_size,
 };
-use flotilla::engine::{
+use flotilla_raft::engine::{
     EngineError, OutboundMessage, RaftConfig, RaftNode, create_append_entries_packet,
     create_append_entries_reply_packet, create_request_vote_packet,
     create_request_vote_reply_packet,
 };
-use flotilla::message::{
+use flotilla_raft::message::{
     AppendEntriesHeader, AppendEntriesReply, MsgType, RequestVoteArgs, RequestVoteReply,
 };
-use flotilla::replication::{
+use flotilla_raft::replication::{
     FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
-use flotilla::storage::{RingBufferLogStorage, StorageError};
-use flotilla::types::{LogIndex, NodeId, Role, Term};
-use flotilla::udp::framing::{ETHERNET_MTU, IP_UDP_OVERHEAD, fits_in_mtu};
+use flotilla_raft::storage::{RingBufferLogStorage, StorageError};
+use flotilla_raft::types::{LogIndex, NodeId, Role, Term};
+use flotilla_raft::udp::framing::{ETHERNET_MTU, IP_UDP_OVERHEAD, fits_in_mtu};
 use std::io::Write;
 use zerocopy::FromBytes;
 
@@ -83,7 +83,7 @@ fn test_file_archive_sink_open_append_and_crc_mismatch() {
 
     {
         let mut sink = FileArchiveSink::create(&wal_path).unwrap();
-        use flotilla::archive::AsyncArchiveSink;
+        use flotilla_raft::archive::AsyncArchiveSink;
         sink.write_entries(&[ArchivedEntry {
             index: LogIndex(1),
             term: Term(1),
@@ -96,7 +96,7 @@ fn test_file_archive_sink_open_append_and_crc_mismatch() {
     // open_append branch
     {
         let mut sink = FileArchiveSink::open_append(&wal_path).unwrap();
-        use flotilla::archive::AsyncArchiveSink;
+        use flotilla_raft::archive::AsyncArchiveSink;
         sink.write_entries(&[ArchivedEntry {
             index: LogIndex(2),
             term: Term(1),
@@ -995,8 +995,8 @@ fn test_replication_evaluator_remaining_branches() {
 
 #[test]
 fn test_client_and_server_error_and_config_branches() {
-    use flotilla::client::{ClientConfig, ClientError, ProposalResult};
-    use flotilla::server::{ServerConfig, ServerError};
+    use flotilla_raft::client::{ClientConfig, ClientError, ProposalResult};
+    use flotilla_raft::server::{ServerConfig, ServerError};
     use std::io;
 
     // ClientError variants and Display
@@ -1072,8 +1072,8 @@ fn test_client_and_server_error_and_config_branches() {
 #[cfg(feature = "client-tcp")]
 #[tokio::test]
 async fn test_tcp_framing_edge_cases() {
-    use flotilla::client::tcp::framing::{read_packet_frame, write_packet_frame};
-    use flotilla::codec::{HEADER_SIZE, MAGIC, PacketHeader};
+    use flotilla_raft::client::tcp::framing::{read_packet_frame, write_packet_frame};
+    use flotilla_raft::codec::{HEADER_SIZE, MAGIC, PacketHeader};
     use zerocopy::IntoBytes;
 
     // Buffer smaller than HEADER_SIZE
@@ -1148,7 +1148,7 @@ async fn test_tcp_framing_edge_cases() {
 
 #[test]
 fn test_raft_node_all_remaining_branches() {
-    use flotilla::message::ClientProposalReply;
+    use flotilla_raft::message::ClientProposalReply;
     use zerocopy::IntoBytes;
 
     let config = RaftConfig {
@@ -1162,7 +1162,7 @@ fn test_raft_node_all_remaining_branches() {
     // 1. MsgType::ClientProposal when Follower and voted_for != NodeId::NONE
     node.election.voted_for = NodeId(2);
     let mut prop_buf = [0u8; 128];
-    let len = flotilla::codec::encode_client_proposal(
+    let len = flotilla_raft::codec::encode_client_proposal(
         &mut prop_buf,
         NodeId(0),
         NodeId(1),
@@ -1188,7 +1188,7 @@ fn test_raft_node_all_remaining_branches() {
         leader_id: NodeId(1),
     };
     let mut reply_buf = [0u8; 128];
-    let rlen = flotilla::codec::encode_client_proposal_reply(
+    let rlen = flotilla_raft::codec::encode_client_proposal_reply(
         &mut reply_buf,
         NodeId(2),
         NodeId(1),
@@ -1228,7 +1228,7 @@ fn test_raft_node_all_remaining_branches() {
             sender_id: NodeId(2),
             receiver_id: NodeId(1),
             term: Term(1),
-            checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+            checksum: flotilla_raft::codec::calculate_crc32(&[1, 2, 3]),
             payload_len: 3,
         };
         let mut short_pkt = [0u8; HEADER_SIZE + 3];
@@ -1249,7 +1249,7 @@ fn test_raft_node_all_remaining_branches() {
         sender_id: NodeId(2),
         receiver_id: NodeId(1),
         term: Term(1),
-        checksum: flotilla::codec::calculate_crc32(&[1, 2, 3]),
+        checksum: flotilla_raft::codec::calculate_crc32(&[1, 2, 3]),
         payload_len: 3,
     };
     let mut short_aer_pkt = [0u8; HEADER_SIZE + 3];
@@ -1297,7 +1297,7 @@ fn test_raft_node_all_remaining_branches() {
         sender_id: NodeId(2),
         receiver_id: NodeId(1),
         term: Term(5),
-        checksum: flotilla::codec::calculate_crc32(step_down_reply.as_bytes()),
+        checksum: flotilla_raft::codec::calculate_crc32(step_down_reply.as_bytes()),
         payload_len: 32,
     };
     let mut high_pkt = [0u8; HEADER_SIZE + 32];
@@ -1317,9 +1317,9 @@ fn test_raft_node_all_remaining_branches() {
 
 #[test]
 fn test_commit_and_replication_extra_branches() {
-    use flotilla::codec::encode_client_proposal;
-    use flotilla::codec::encode_client_proposal_reply;
-    use flotilla::message::ClientProposalReply;
+    use flotilla_raft::codec::encode_client_proposal;
+    use flotilla_raft::codec::encode_client_proposal_reply;
+    use flotilla_raft::message::ClientProposalReply;
 
     // 1. Commit advancement with > 16 nodes -> returns None
     let many = vec![LogIndex(1); 17];

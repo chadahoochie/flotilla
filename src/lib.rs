@@ -25,8 +25,8 @@
 //! ## Quickstart
 //!
 //! ```rust
-//! use flotilla::engine::{RaftConfig, RaftNode};
-//! use flotilla::types::NodeId;
+//! use flotilla_raft::engine::{RaftConfig, RaftNode};
+//! use flotilla_raft::types::NodeId;
 //!
 //! // Configure node 1 in a 3-node cluster
 //! let config = RaftConfig {
@@ -49,7 +49,7 @@
 //! and server implementations:
 //!
 //! ```rust,no_run
-//! use flotilla::client::{FlotillaClient, UdpClient};
+//! use flotilla_raft::client::{FlotillaClient, UdpClient};
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = UdpClient::connect("127.0.0.1:9001")?;

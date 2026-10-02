@@ -1,12 +1,12 @@
 #![cfg(feature = "grpc")]
 
-use flotilla::client::grpc::GrpcClient;
-use flotilla::client::{ClientConfig, ClientError, FlotillaClient};
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::server::GrpcService;
-use flotilla::server::proto::flotilla_service_client::FlotillaServiceClient;
-use flotilla::server::proto::{StatusRequest, StepRequest};
-use flotilla::types::{LogIndex, NodeId, Role, Term};
+use flotilla_raft::client::grpc::GrpcClient;
+use flotilla_raft::client::{ClientConfig, ClientError, FlotillaClient};
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::server::GrpcService;
+use flotilla_raft::server::proto::flotilla_service_client::FlotillaServiceClient;
+use flotilla_raft::server::proto::{StatusRequest, StepRequest};
+use flotilla_raft::types::{LogIndex, NodeId, Role, Term};
 use parking_lot::Mutex;
 use std::net::SocketAddr;
 use std::sync::Arc;

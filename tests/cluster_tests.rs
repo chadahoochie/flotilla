@@ -1,6 +1,6 @@
-use flotilla::engine::{OutboundMessage, RaftConfig, RaftNode};
-use flotilla::types::{LogIndex, NodeId, Role};
-use flotilla::udp::{UdpClusterRouter, UdpDriver};
+use flotilla_raft::engine::{OutboundMessage, RaftConfig, RaftNode};
+use flotilla_raft::types::{LogIndex, NodeId, Role};
+use flotilla_raft::udp::{UdpClusterRouter, UdpDriver};
 use std::io::ErrorKind;
 
 #[test]

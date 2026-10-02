@@ -1,9 +1,9 @@
-use flotilla::message::AppendEntriesHeader;
-use flotilla::replication::{
+use flotilla_raft::message::AppendEntriesHeader;
+use flotilla_raft::replication::{
     FollowerAppendResult, PeerProgressTracker, evaluate_follower_append_entries,
 };
-use flotilla::storage::ring_buffer::RingBufferLogStorage;
-use flotilla::types::{LogIndex, NodeId, Term};
+use flotilla_raft::storage::ring_buffer::RingBufferLogStorage;
+use flotilla_raft::types::{LogIndex, NodeId, Term};
 
 #[test]
 fn test_peer_progress_tracker_updates() {

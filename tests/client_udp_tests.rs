@@ -1,11 +1,11 @@
 #![cfg(feature = "client-udp")]
 
-use flotilla::client::udp::UdpClient;
-use flotilla::client::{ClientConfig, ClientError, FlotillaClient};
-use flotilla::engine::{RaftConfig, RaftNode};
-use flotilla::server::UdpListener;
-use flotilla::types::{LogIndex, NodeId, Role, Term};
-use flotilla::udp::UdpClusterRouter;
+use flotilla_raft::client::udp::UdpClient;
+use flotilla_raft::client::{ClientConfig, ClientError, FlotillaClient};
+use flotilla_raft::engine::{RaftConfig, RaftNode};
+use flotilla_raft::server::UdpListener;
+use flotilla_raft::types::{LogIndex, NodeId, Role, Term};
+use flotilla_raft::udp::UdpClusterRouter;
 use std::time::Duration;
 
 #[tokio::test]
@@ -162,11 +162,11 @@ async fn test_udp_client_ping_leader() {
 
 #[tokio::test]
 async fn test_udp_client_error_responses_from_server() {
-    use flotilla::codec::{
+    use flotilla_raft::codec::{
         CodecError, HEADER_SIZE, MAGIC, PROTOCOL_VERSION, PacketHeader, calculate_crc32,
         encode_client_proposal_reply, encode_packet_header,
     };
-    use flotilla::message::{ClientProposalReply, MsgType};
+    use flotilla_raft::message::{ClientProposalReply, MsgType};
     use zerocopy::IntoBytes;
 
     let server_sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -278,8 +278,8 @@ async fn test_udp_client_error_responses_from_server() {
 
 #[test]
 fn test_udp_listener_branches_and_routing() {
-    use flotilla::engine::{create_append_entries_packet, create_append_entries_reply_packet};
-    use flotilla::message::AppendEntriesHeader;
+    use flotilla_raft::engine::{create_append_entries_packet, create_append_entries_reply_packet};
+    use flotilla_raft::message::AppendEntriesHeader;
 
     let mut router = UdpClusterRouter::new();
     let listener = UdpListener::bind("127.0.0.1:0", router.clone()).expect("Bind listener");
@@ -363,7 +363,7 @@ fn test_udp_listener_branches_and_routing() {
     });
     node_with_unrouted_peer.election.role = Role::Leader;
     let mut prop_buf = [0u8; 128];
-    let plen = flotilla::codec::encode_client_proposal(
+    let plen = flotilla_raft::codec::encode_client_proposal(
         &mut prop_buf,
         NodeId(0),
         NodeId(1),

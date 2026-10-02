@@ -1,9 +1,9 @@
-use flotilla::election::{
+use flotilla_raft::election::{
     ElectionAction, ElectionConfig, ElectionState, is_log_up_to_date, is_quorum_reached,
     is_vote_eligible, quorum_size,
 };
-use flotilla::message::{RequestVoteArgs, RequestVoteReply};
-use flotilla::types::{LogIndex, NodeId, Role, Term};
+use flotilla_raft::message::{RequestVoteArgs, RequestVoteReply};
+use flotilla_raft::types::{LogIndex, NodeId, Role, Term};
 
 #[test]
 fn test_quorum_calculation() {

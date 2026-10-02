@@ -1,9 +1,9 @@
 #![cfg(feature = "cosmos")]
 
 use chrono::{TimeZone, Utc};
-use flotilla::archive::cosmos::*;
-use flotilla::archive::{ArchivePipeline, ArchivedEntry, AsyncArchiveSink};
-use flotilla::types::{LogIndex, Term};
+use flotilla_raft::archive::cosmos::*;
+use flotilla_raft::archive::{ArchivePipeline, ArchivedEntry, AsyncArchiveSink};
+use flotilla_raft::types::{LogIndex, Term};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc::unbounded_channel;

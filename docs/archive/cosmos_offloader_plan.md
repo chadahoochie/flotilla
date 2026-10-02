@@ -6,7 +6,7 @@ Flotilla is a zero-allocation, sans-I/O Raft consensus engine designed for high-
 
 To enable infinite log advancement without ring buffer exhaustion while preserving a 90-day searchable audit trail and message resubmission capability, committed log entries (`ArchivedEntry`) are asynchronously offloaded to Azure Cosmos DB.
 
-This document outlines the design and implementation of the **Native Rust Async Cosmos DB Offloader** in Flotilla (`flotilla::archive::cosmos`), featuring:
+This document outlines the design and implementation of the **Native Rust Async Cosmos DB Offloader** in Flotilla (`flotilla_raft::archive::cosmos`), featuring:
 1. **Sans-I/O & Zero-Alloc Invariant Preserved**: Isolated behind an optional `[features] cosmos` flag in `Cargo.toml`. Default builds remain 100% sans-I/O and zero-allocation.
 2. **Pluggable Sink Integration**: Implements `AsyncArchiveSink` as `CosmosArchiveSink`, allowing direct plug-in to `ArchivePipeline`.
 3. **Native Hierarchical Partition Key Compliance**: Targets container `ingress-journal-v2` with headers formatted for Level 1 (`/sliceKey`) and Level 2 (`/dateBucket` = `yyyy-MM-dd`).
