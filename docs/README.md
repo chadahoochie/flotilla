@@ -1,6 +1,6 @@
 # Flotilla Developer and User Guide
 
-Flotilla is a zero-allocation, sans-I/O Raft consensus library implemented in Safe Rust (Rust 1.98+ / Edition 2024).
+Flotilla is a zero-allocation, sans-I/O Raft consensus library implemented in Safe Rust (Rust 1.99+ / Edition 2024).
 
 For the top-level repository overview, see [**`README.md`**](../README.md).  
 For the complete engineering and code quality specification, see [**`CODING_STANDARDS.md`**](../CODING_STANDARDS.md).

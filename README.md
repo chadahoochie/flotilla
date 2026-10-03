@@ -1,12 +1,12 @@
 # Flotilla
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.98%2B%20(Edition%202024)-orange.svg)](Cargo.toml)
+[![Rust](https://img.shields.io/badge/rust-1.99%2B%20(Edition%202024)-orange.svg)](Cargo.toml)
 [![Sans-I/O](https://img.shields.io/badge/architecture-sans--I%2FO-brightgreen.svg)](CODING_STANDARDS.md#5-sans-io-consensus-model)
 [![Zero-Allocation](https://img.shields.io/badge/hot--path-zero--allocation-success.svg)](CODING_STANDARDS.md#2-zero-allocation-hot-path-standards)
 [![Coverage Gate](https://img.shields.io/badge/coverage%20gate-85%25%20line%20%7C%2090%25%20branch-blueviolet.svg)](.github/workflows/coverage.yml)
 
-> **High-Throughput, Low-Latency Sans-I/O Raft Consensus in Safe Rust (Rust 1.98+ / Edition 2024).**
+> **High-Throughput, Low-Latency Sans-I/O Raft Consensus in Safe Rust (Rust 1.99+ / Edition 2024).**
 
 Flotilla is a deterministic, constant-memory distributed consensus engine engineered for mission-critical systems where garbage collection pauses, memory allocator lock contention, and asynchronous runtime stalls are unacceptable. By decoupling consensus logic from operating system side effects (networking, clocks, and disk drives), Flotilla achieves microsecond-level latency predictability and 100% reproducible simulation.
 
