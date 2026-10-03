@@ -117,11 +117,16 @@ async fn test_udp_client_config_and_ping() {
     assert!(client.set_timeout(Duration::from_millis(200)).is_ok());
     assert_eq!(client.timeout, Duration::from_millis(200));
 
-    // IPv6 connect branches across instantiations
+    // IPv6 and IPv4 connect branches across instantiations
     let _ = UdpClient::connect("[::1]:0");
+    let _ = UdpClient::connect("127.0.0.1:0");
     if let Ok(ipv6_addr) = "[::1]:0".parse::<std::net::SocketAddr>() {
         let _ = UdpClient::connect(ipv6_addr);
     }
+    if let Ok(ipv4_addr) = "127.0.0.1:0".parse::<std::net::SocketAddr>() {
+        let _ = UdpClient::connect(ipv4_addr);
+    }
+    assert!(UdpClient::connect("not an address").is_err());
 }
 
 #[tokio::test]

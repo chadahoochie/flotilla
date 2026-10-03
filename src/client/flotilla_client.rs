@@ -1,5 +1,6 @@
 use super::client_error::ClientError;
 use super::proposal_result::ProposalResult;
+use crate::telemetry::TraceContext;
 use std::future::Future;
 
 /// Unified client interface for submitting proposals and pinging a Flotilla consensus cluster.
@@ -8,6 +9,18 @@ pub trait FlotillaClient: Send + Sync {
     fn propose(
         &self,
         payload: &[u8],
+    ) -> impl Future<Output = Result<ProposalResult, ClientError>> + Send {
+        async move {
+            let trace = TraceContext::new_root();
+            self.propose_with_trace(payload, &trace).await
+        }
+    }
+
+    /// Submit a command payload with explicit distributed trace context propagation.
+    fn propose_with_trace(
+        &self,
+        payload: &[u8],
+        trace: &TraceContext,
     ) -> impl Future<Output = Result<ProposalResult, ClientError>> + Send;
 
     /// Ping cluster node to verify health and connectivity.

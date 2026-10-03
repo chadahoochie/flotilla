@@ -83,5 +83,6 @@ pub mod message;
 pub mod replication;
 pub mod server;
 pub mod storage;
+pub mod telemetry;
 pub mod types;
 pub mod udp;

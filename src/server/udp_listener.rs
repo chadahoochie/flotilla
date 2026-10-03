@@ -30,10 +30,16 @@ impl UdpListener {
     ) -> io::Result<usize> {
         match self.driver.recv_from(buf) {
             Ok((len, src_addr)) => {
+                crate::telemetry::metrics().udp_received.inc();
+                let _timer = crate::telemetry::DurationTimer::start(
+                    &crate::telemetry::metrics().udp_step_duration,
+                );
+
                 let sender_id = self.router.peer_id(&src_addr).unwrap_or(NodeId(0));
                 if let Ok(actions) = node.step(sender_id, &buf[..len]) {
                     for act in actions {
                         if let OutboundMessage::SendPacket { to, packet } = act {
+                            crate::telemetry::metrics().udp_sent.inc();
                             if let Some(dest_addr) = self.router.peer_addr(to) {
                                 let _ = self.driver.send_to(&packet, dest_addr);
                             } else if to == sender_id {
