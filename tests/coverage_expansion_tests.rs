@@ -144,6 +144,10 @@ fn test_file_archive_sink_open_append_and_crc_mismatch() {
         std::io::ErrorKind::UnexpectedEof
     );
 
+    // Test read_all on a directory (returns io error other than UnexpectedEof)
+    let dir_res = FileArchiveSink::read_all(&dir);
+    assert!(dir_res.is_err());
+
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -991,6 +995,28 @@ fn test_replication_evaluator_remaining_branches() {
     let res = evaluate_follower_append_entries(&hdr_no_commit, &[], &mut storage, &mut commit);
     assert!(matches!(res, FollowerAppendResult::Success { .. }));
     assert_eq!(commit, LogIndex(2));
+
+    // 4. leader_commit > current_commit, but storage.last_index <= current_commit
+    let mut small_storage = RingBufferLogStorage::<1024, 1024>::new();
+    let _ = small_storage.append_entry(Term(1), b"e1");
+    let mut commit_val = LogIndex(1);
+    let hdr_storage_behind = AppendEntriesHeader {
+        term: Term(1),
+        leader_id: NodeId(1),
+        prev_log_index: LogIndex(1),
+        prev_log_term: Term(1),
+        leader_commit: LogIndex(5),
+        entries_count: 0,
+        _pad: [0; 4],
+    };
+    let res = evaluate_follower_append_entries(
+        &hdr_storage_behind,
+        &[],
+        &mut small_storage,
+        &mut commit_val,
+    );
+    assert!(matches!(res, FollowerAppendResult::Success { .. }));
+    assert_eq!(commit_val, LogIndex(1));
 }
 
 #[test]

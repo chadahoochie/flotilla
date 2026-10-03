@@ -43,6 +43,21 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> FlotillaRpcService
         &self,
         request: Request<ProposalRequest>,
     ) -> Result<Response<ProposalResponse>, Status> {
+        let _timer = crate::telemetry::DurationTimer::start(
+            &crate::telemetry::metrics().grpc_proposal_duration,
+        );
+        crate::telemetry::metrics().grpc_proposals.inc();
+
+        let trace = crate::telemetry::extract_grpc_traceparent(request.metadata())
+            .unwrap_or_else(crate::telemetry::TraceContext::new_root);
+
+        let _span = tracing::info_span!(
+            "grpc_service_propose",
+            trace_id = %trace.trace_id,
+            span_id = %trace.span_id,
+        );
+        let _enter = _span.enter();
+
         let req = request.into_inner();
         let mut node = self.node.lock();
 
@@ -80,7 +95,14 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> FlotillaRpcService
     }
 
     async fn step(&self, request: Request<StepRequest>) -> Result<Response<StepResponse>, Status> {
+        let _timer =
+            crate::telemetry::DurationTimer::start(&crate::telemetry::metrics().grpc_step_duration);
+        crate::telemetry::metrics().grpc_step_calls.inc();
+
         let req = request.into_inner();
+        let _span = tracing::info_span!("grpc_service_step", sender_id = req.sender_id);
+        let _enter = _span.enter();
+
         let mut node = self.node.lock();
 
         match node.step(NodeId(req.sender_id), &req.packet) {
@@ -104,6 +126,7 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> FlotillaRpcService
         &self,
         _request: Request<StatusRequest>,
     ) -> Result<Response<StatusResponse>, Status> {
+        crate::telemetry::metrics().grpc_status_calls.inc();
         let node = self.node.lock();
         let leader = if node.role() == Role::Leader {
             node.election.config.node_id.0

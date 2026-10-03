@@ -22,6 +22,8 @@ struct ServerSettings {
     election_timeout_ticks: u32,
     heartbeat_interval_ticks: u32,
     tick_interval_ms: u64,
+    metrics_addr: Option<SocketAddr>,
+    metrics_interval_secs: u64,
 }
 
 fn parse_peer_entry(entry: &str) -> Option<(NodeId, SocketAddr)> {
@@ -64,6 +66,8 @@ OPTIONS:
     --election-timeout-ticks <TICKS>          Election timeout ticks (default: 10, env: FLOTILLA_ELECTION_TIMEOUT_TICKS)
     --heartbeat-interval-ticks <TICKS>        Heartbeat interval ticks (default: 3, env: FLOTILLA_HEARTBEAT_INTERVAL_TICKS)
     --tick-ms <MS>                             Logical tick duration in ms (default: 100, env: FLOTILLA_TICK_MS)
+    --metrics-addr <ADDR>                      Prometheus metrics HTTP listen address (env: FLOTILLA_METRICS_ADDR)
+    --metrics-interval-secs <SECS>            Telemetry log interval in seconds (default: 10, env: FLOTILLA_METRICS_INTERVAL_SECS)
 "#
     );
 }
@@ -103,6 +107,15 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(100);
+
+    let mut metrics_addr: Option<SocketAddr> = env::var("FLOTILLA_METRICS_ADDR")
+        .ok()
+        .and_then(|v| v.parse().ok());
+
+    let mut metrics_interval_secs: u64 = env::var("FLOTILLA_METRICS_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
 
     let mut peers = Vec::new();
     if let Ok(env_peers) = env::var("FLOTILLA_PEERS") {
@@ -196,6 +209,25 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
                     .parse()
                     .map_err(|e| format!("Invalid --tick-ms: {e}"))?;
             }
+            "--metrics-addr" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("Missing value for --metrics-addr".to_string());
+                }
+                let addr: SocketAddr = args[i]
+                    .parse()
+                    .map_err(|e| format!("Invalid --metrics-addr: {e}"))?;
+                metrics_addr = Some(addr);
+            }
+            "--metrics-interval-secs" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("Missing value for --metrics-interval-secs".to_string());
+                }
+                metrics_interval_secs = args[i]
+                    .parse()
+                    .map_err(|e| format!("Invalid --metrics-interval-secs: {e}"))?;
+            }
             unknown => {
                 return Err(format!("Unknown argument: {unknown}"));
             }
@@ -212,11 +244,20 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
         election_timeout_ticks,
         heartbeat_interval_ticks,
         tick_interval_ms,
+        metrics_addr,
+        metrics_interval_secs,
     }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+
     let args: Vec<String> = env::args().collect();
     let settings = match parse_server_settings_from_args(&args) {
         Ok(Some(s)) => s,
@@ -246,6 +287,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "  Tick Interval:            {} ms",
         settings.tick_interval_ms
     );
+    if let Some(metrics_addr) = settings.metrics_addr {
+        println!("  Metrics Prometheus HTTP:  http://{metrics_addr}/metrics");
+    }
+    if settings.metrics_interval_secs > 0 {
+        println!(
+            "  Metrics Log Interval:     {} s",
+            settings.metrics_interval_secs
+        );
+    }
     println!("============================================================");
 
     let mut router = UdpClusterRouter::new();
@@ -316,6 +366,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut interval = tokio::time::interval(tick_interval);
         loop {
             interval.tick().await;
+            flotilla_raft::telemetry::metrics().ticks_total.inc();
+            let _timer = flotilla_raft::telemetry::DurationTimer::start(
+                &flotilla_raft::telemetry::metrics().tick_duration,
+            );
+
             let outbound = {
                 let mut locked = node_ticker.lock();
                 locked.tick()
@@ -324,6 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let OutboundMessage::SendPacket { to, packet } = msg
                     && let Some(dest_addr) = udp_ticker_driver.router.peer_addr(to)
                 {
+                    flotilla_raft::telemetry::metrics().udp_sent.inc();
                     let _ = udp_ticker_driver.driver.send_to(&packet, dest_addr);
                 }
             }
@@ -333,9 +389,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "✓ Logical consensus ticker loop active (every {} ms)",
         settings.tick_interval_ms
     );
+
+    // 5. Start Telemetry Periodic Logger Task
+    if settings.metrics_interval_secs > 0 {
+        let interval_secs = settings.metrics_interval_secs;
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            loop {
+                interval.tick().await;
+                let snap = flotilla_raft::telemetry::metrics().snapshot();
+                tracing::info!("\n{}", snap.to_summary_report());
+            }
+        });
+        println!(
+            "✓ Telemetry metrics logger active (every {} s)",
+            settings.metrics_interval_secs
+        );
+    }
+
+    // 6. Start Prometheus HTTP Metrics Server if configured
+    if let Some(metrics_addr) = settings.metrics_addr {
+        tokio::spawn(async move {
+            if let Ok(listener) = tokio::net::TcpListener::bind(metrics_addr).await {
+                tracing::info!(
+                    "✓ Metrics HTTP endpoint listening on http://{metrics_addr}/metrics"
+                );
+                loop {
+                    if let Ok((mut stream, _)) = listener.accept().await {
+                        tokio::spawn(async move {
+                            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                            let mut req_buf = [0u8; 1024];
+                            if let Ok(n) = stream.read(&mut req_buf).await {
+                                let req_str = String::from_utf8_lossy(&req_buf[..n]);
+                                if req_str.starts_with("GET /metrics")
+                                    || req_str.starts_with("GET / ")
+                                {
+                                    let body = flotilla_raft::telemetry::metrics()
+                                        .snapshot()
+                                        .to_prometheus_text();
+                                    let resp = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: text/plain; version=0.0.4; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                } else {
+                                    let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        });
+    }
+
     println!("Flotilla node initialization complete. Press Ctrl+C to terminate.");
 
-    // 5. Await termination signal
+    // 7. Await termination signal
     tokio::signal::ctrl_c().await?;
     println!("\nShutdown signal received. Flotilla server shutting down.");
 

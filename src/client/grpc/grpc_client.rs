@@ -39,31 +39,65 @@ impl GrpcClient {
 
 impl FlotillaClient for GrpcClient {
     async fn propose(&self, payload: &[u8]) -> Result<ProposalResult, ClientError> {
+        let trace = crate::telemetry::TraceContext::new_root();
+        self.propose_with_trace(payload, &trace).await
+    }
+
+    async fn propose_with_trace(
+        &self,
+        payload: &[u8],
+        trace: &crate::telemetry::TraceContext,
+    ) -> Result<ProposalResult, ClientError> {
+        let _timer =
+            crate::telemetry::DurationTimer::start(&crate::telemetry::metrics().proposal_duration);
+        crate::telemetry::metrics().client_proposals_total.inc();
+
+        let _span = tracing::info_span!(
+            "grpc_client_propose",
+            trace_id = %trace.trace_id,
+            span_id = %trace.span_id,
+        );
+        let _enter = _span.enter();
+
         let mut client = tokio::time::timeout(
             self.timeout,
             FlotillaServiceClient::connect(self.endpoint.clone()),
         )
         .await
-        .map_err(|_| ClientError::Timeout)?
+        .map_err(|_| {
+            crate::telemetry::metrics().client_timeouts_total.inc();
+            ClientError::Timeout
+        })?
         .map_err(|e| ClientError::ConnectionFailed(e.to_string()))?;
 
-        let req = ProposalRequest {
+        let req_proto = ProposalRequest {
             payload: payload.to_vec(),
         };
 
-        let response = tokio::time::timeout(self.timeout, client.propose(tonic::Request::new(req)))
+        let mut request = tonic::Request::new(req_proto);
+        crate::telemetry::inject_grpc_traceparent(request.metadata_mut(), trace);
+
+        let response = tokio::time::timeout(self.timeout, client.propose(request))
             .await
-            .map_err(|_| ClientError::Timeout)?
-            .map_err(|e| ClientError::RpcFailed(e.to_string()))?
+            .map_err(|_| {
+                crate::telemetry::metrics().client_timeouts_total.inc();
+                ClientError::Timeout
+            })?
+            .map_err(|e| {
+                crate::telemetry::metrics().client_proposals_failed.inc();
+                ClientError::RpcFailed(e.to_string())
+            })?
             .into_inner();
 
         if response.success {
+            crate::telemetry::metrics().client_proposals_succeeded.inc();
             Ok(ProposalResult::success(
                 LogIndex(response.index),
                 Term(response.term),
                 NodeId(response.leader_id),
             ))
         } else {
+            crate::telemetry::metrics().client_proposals_failed.inc();
             let leader = if response.leader_id != 0 {
                 Some(NodeId(response.leader_id))
             } else {
@@ -74,6 +108,7 @@ impl FlotillaClient for GrpcClient {
     }
 
     async fn ping(&self) -> Result<bool, ClientError> {
+        crate::telemetry::metrics().client_pings_total.inc();
         let mut client = tokio::time::timeout(
             self.timeout,
             FlotillaServiceClient::connect(self.endpoint.clone()),

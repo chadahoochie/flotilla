@@ -14,6 +14,8 @@ readme = "README.md"
 zerocopy = { version = "0.8", features = ["derive"] }
 crc32fast = "1.4"
 parking_lot = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # Optional dependencies for Cosmos DB archival offloader
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
