@@ -1,6 +1,6 @@
 # Flotilla Coding Standards & Architectural Invariants
 
-Flotilla is a zero-allocation, sans-I/O Raft consensus engine implemented in Safe Rust (Rust 1.98+ / Edition 2024).
+Flotilla is a zero-allocation, sans-I/O Raft consensus engine implemented in Safe Rust (Rust 1.99+ / Edition 2024).
 
 These engineering standards are strict, non-negotiable invariants designed to guarantee deterministic execution, mathematical correctness, microsecond-level latency predictability, and complete modularity. Every contributor and code reviewer must uphold these four foundational standards:
 

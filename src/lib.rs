@@ -1,6 +1,6 @@
 //! # Flotilla
 //!
-//! High-Throughput, Low-Latency Sans-I/O Raft Consensus in Safe Rust (Rust 1.98+ / Edition 2024).
+//! High-Throughput, Low-Latency Sans-I/O Raft Consensus in Safe Rust (Rust 1.99+ / Edition 2024).
 //!
 //! Flotilla is a deterministic, constant-memory distributed consensus engine engineered for
 //! mission-critical systems where garbage collection pauses, memory allocator lock contention,
