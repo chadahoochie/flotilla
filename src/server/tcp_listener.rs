@@ -29,7 +29,15 @@ pub(crate) async fn handle_tcp_stream<const CAPACITY: usize, const MAX_PAYLOAD: 
                     if let Ok((trace, _)) = crate::telemetry::TraceEnvelope::unwrap(
                         &buf[crate::codec::HEADER_SIZE..len],
                     ) {
-                        tracing::info_span!("tcp_stream_step", trace_id = %trace.trace_id, span_id = %trace.span_id)
+                        let span = tracing::info_span!("tcp_stream_step", trace_id = %trace.trace_id, span_id = %trace.span_id);
+                        #[cfg(feature = "otel")]
+                        {
+                            use tracing_opentelemetry::OpenTelemetrySpanExt;
+                            span.set_parent(crate::telemetry::trace_context_to_otel_context(
+                                &trace,
+                            ));
+                        }
+                        span
                     } else {
                         tracing::info_span!("tcp_stream_step")
                     }

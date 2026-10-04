@@ -24,6 +24,10 @@ struct ServerSettings {
     tick_interval_ms: u64,
     metrics_addr: Option<SocketAddr>,
     metrics_interval_secs: u64,
+    otel_endpoint: Option<String>,
+    otel_service_name: Option<String>,
+    otel_sample_ratio: f64,
+    otel_metrics: bool,
 }
 
 fn parse_peer_entry(entry: &str) -> Option<(NodeId, SocketAddr)> {
@@ -68,6 +72,10 @@ OPTIONS:
     --tick-ms <MS>                             Logical tick duration in ms (default: 100, env: FLOTILLA_TICK_MS)
     --metrics-addr <ADDR>                      Prometheus metrics HTTP listen address (env: FLOTILLA_METRICS_ADDR)
     --metrics-interval-secs <SECS>            Telemetry log interval in seconds (default: 10, env: FLOTILLA_METRICS_INTERVAL_SECS)
+    --otel-endpoint <URL>                      OpenTelemetry OTLP endpoint (env: FLOTILLA_OTEL_ENDPOINT, OTEL_EXPORTER_OTLP_ENDPOINT)
+    --otel-service-name <NAME>                 OpenTelemetry service name (env: FLOTILLA_OTEL_SERVICE_NAME, OTEL_SERVICE_NAME)
+    --otel-sample-ratio <RATIO>                OpenTelemetry trace sample ratio (0.0 to 1.0, default: 1.0)
+    --otel-metrics                             Enable OpenTelemetry metrics publishing (env: FLOTILLA_OTEL_METRICS)
 "#
     );
 }
@@ -116,6 +124,24 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(10);
+
+    let mut otel_endpoint: Option<String> = env::var("FLOTILLA_OTEL_ENDPOINT")
+        .or_else(|_| env::var("OTEL_EXPORTER_OTLP_ENDPOINT"))
+        .ok();
+
+    let mut otel_service_name: Option<String> = env::var("FLOTILLA_OTEL_SERVICE_NAME")
+        .or_else(|_| env::var("OTEL_SERVICE_NAME"))
+        .ok();
+
+    let mut otel_sample_ratio: f64 = env::var("FLOTILLA_OTEL_SAMPLE_RATIO")
+        .or_else(|_| env::var("OTEL_TRACES_SAMPLER_ARG"))
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
+
+    let mut otel_metrics: bool = env::var("FLOTILLA_OTEL_METRICS")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false);
 
     let mut peers = Vec::new();
     if let Ok(env_peers) = env::var("FLOTILLA_PEERS") {
@@ -228,6 +254,32 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
                     .parse()
                     .map_err(|e| format!("Invalid --metrics-interval-secs: {e}"))?;
             }
+            "--otel-endpoint" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("Missing value for --otel-endpoint".to_string());
+                }
+                otel_endpoint = Some(args[i].clone());
+            }
+            "--otel-service-name" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("Missing value for --otel-service-name".to_string());
+                }
+                otel_service_name = Some(args[i].clone());
+            }
+            "--otel-sample-ratio" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("Missing value for --otel-sample-ratio".to_string());
+                }
+                otel_sample_ratio = args[i]
+                    .parse()
+                    .map_err(|e| format!("Invalid --otel-sample-ratio: {e}"))?;
+            }
+            "--otel-metrics" => {
+                otel_metrics = true;
+            }
             unknown => {
                 return Err(format!("Unknown argument: {unknown}"));
             }
@@ -246,18 +298,15 @@ fn parse_server_settings_from_args(args: &[String]) -> Result<Option<ServerSetti
         tick_interval_ms,
         metrics_addr,
         metrics_interval_secs,
+        otel_endpoint,
+        otel_service_name,
+        otel_sample_ratio,
+        otel_metrics,
     }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
     let args: Vec<String> = env::args().collect();
     let settings = match parse_server_settings_from_args(&args) {
         Ok(Some(s)) => s,
@@ -267,6 +316,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     };
+
+    #[cfg(feature = "otel")]
+    let _otel_guard = if let Some(ref endpoint) = settings.otel_endpoint {
+        use tracing_subscriber::layer::SubscriberExt;
+        use tracing_subscriber::util::SubscriberInitExt;
+
+        let svc_name = settings
+            .otel_service_name
+            .clone()
+            .unwrap_or_else(|| format!("flotilla-node-{}", settings.node_id.0));
+
+        let otel_cfg = flotilla_raft::telemetry::OtelConfig::new(
+            endpoint.clone(),
+            svc_name,
+            settings.otel_sample_ratio,
+            settings.metrics_interval_secs,
+            true,
+        );
+
+        match flotilla_raft::telemetry::init_otel_tracer(&otel_cfg) {
+            Ok((tracer, guard)) => {
+                let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(tracing_subscriber::fmt::layer())
+                    .with(otel_layer)
+                    .init();
+
+                Some(guard)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize OpenTelemetry tracer: {e}");
+                tracing_subscriber::fmt()
+                    .with_env_filter(
+                        tracing_subscriber::EnvFilter::try_from_default_env()
+                            .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                    )
+                    .init();
+                None
+            }
+        }
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+            )
+            .init();
+        None
+    };
+
+    #[cfg(not(feature = "otel"))]
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
 
     println!("============================================================");
     println!("Flotilla Consensus Node Starting");
@@ -287,6 +397,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "  Tick Interval:            {} ms",
         settings.tick_interval_ms
     );
+
     if let Some(metrics_addr) = settings.metrics_addr {
         println!("  Metrics Prometheus HTTP:  http://{metrics_addr}/metrics");
     }
@@ -295,6 +406,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "  Metrics Log Interval:     {} s",
             settings.metrics_interval_secs
         );
+    }
+    if let Some(ref otel_ep) = settings.otel_endpoint {
+        println!("  OpenTelemetry OTLP Exporter: {}", otel_ep);
+        println!(
+            "  OpenTelemetry Sample Ratio:  {}",
+            settings.otel_sample_ratio
+        );
+        if settings.otel_metrics {
+            println!("  OpenTelemetry Metrics Push:  Enabled");
+        }
     }
     println!("============================================================");
 
@@ -445,11 +566,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // 7. Start OpenTelemetry Metrics Publisher Task if configured
+    #[cfg(feature = "otel")]
+    if settings.otel_metrics && settings.otel_endpoint.is_some() {
+        let interval_secs = if settings.metrics_interval_secs > 0 {
+            settings.metrics_interval_secs
+        } else {
+            10
+        };
+        tokio::spawn(async move {
+            let meter = opentelemetry::global::meter("flotilla-server");
+            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
+            loop {
+                interval.tick().await;
+                let snap = flotilla_raft::telemetry::metrics().snapshot();
+                flotilla_raft::telemetry::publish_snapshot_to_otel(&snap, &meter);
+            }
+        });
+        println!(
+            "✓ OpenTelemetry metrics publisher active (every {} s)",
+            if settings.metrics_interval_secs > 0 {
+                settings.metrics_interval_secs
+            } else {
+                10
+            }
+        );
+    }
+
     println!("Flotilla node initialization complete. Press Ctrl+C to terminate.");
 
-    // 7. Await termination signal
+    // 8. Await termination signal
     tokio::signal::ctrl_c().await?;
     println!("\nShutdown signal received. Flotilla server shutting down.");
+
+    #[cfg(feature = "otel")]
+    drop(_otel_guard);
 
     Ok(())
 }

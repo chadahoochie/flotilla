@@ -56,6 +56,11 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> FlotillaRpcService
             trace_id = %trace.trace_id,
             span_id = %trace.span_id,
         );
+        #[cfg(feature = "otel")]
+        {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+            _span.set_parent(crate::telemetry::trace_context_to_otel_context(&trace));
+        }
         let _enter = _span.enter();
 
         let req = request.into_inner();
@@ -98,9 +103,21 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> FlotillaRpcService
         let _timer =
             crate::telemetry::DurationTimer::start(&crate::telemetry::metrics().grpc_step_duration);
         crate::telemetry::metrics().grpc_step_calls.inc();
+        let trace = crate::telemetry::extract_grpc_traceparent(request.metadata())
+            .unwrap_or_else(crate::telemetry::TraceContext::new_root);
 
         let req = request.into_inner();
-        let _span = tracing::info_span!("grpc_service_step", sender_id = req.sender_id);
+        let _span = tracing::info_span!(
+            "grpc_service_step",
+            sender_id = req.sender_id,
+            trace_id = %trace.trace_id,
+            span_id = %trace.span_id,
+        );
+        #[cfg(feature = "otel")]
+        {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+            _span.set_parent(crate::telemetry::trace_context_to_otel_context(&trace));
+        }
         let _enter = _span.enter();
 
         let mut node = self.node.lock();

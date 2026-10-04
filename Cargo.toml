@@ -15,7 +15,7 @@ zerocopy = { version = "0.8", features = ["derive"] }
 crc32fast = "1.4"
 parking_lot = "0.12"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry"] }
 
 # Optional dependencies for Cosmos DB archival offloader
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
@@ -31,6 +31,12 @@ urlencoding = { version = "2.1", optional = true }
 # Optional dependencies for gRPC
 tonic = { version = "0.12", optional = true }
 prost = { version = "0.13", optional = true }
+
+# Optional dependencies for OpenTelemetry
+opentelemetry = { version = "0.27", default-features = false, features = ["trace", "metrics"], optional = true }
+opentelemetry_sdk = { version = "0.27", default-features = false, features = ["trace", "metrics", "rt-tokio"], optional = true }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = ["grpc-tonic", "trace", "metrics"], optional = true }
+tracing-opentelemetry = { version = "0.28", default-features = false, features = ["metrics"], optional = true }
 
 [build-dependencies]
 tonic-build = { version = "0.12", optional = true }
@@ -48,7 +54,15 @@ server-grpc = ["dep:tokio", "dep:tonic", "dep:prost", "dep:tonic-build", "dep:pr
 udp = ["client-udp"]
 tcp = ["client-tcp", "server-tcp"]
 grpc = ["client-grpc", "server-grpc"]
-full = ["udp", "tcp", "grpc", "cosmos"]
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tokio",
+    "dep:tonic",
+]
+full = ["udp", "tcp", "grpc", "cosmos", "otel"]
 
 cosmos = [
     "dep:reqwest",
