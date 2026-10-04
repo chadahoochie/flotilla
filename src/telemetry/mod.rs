@@ -17,6 +17,17 @@ pub mod trace_envelope;
 pub mod trace_flags;
 pub mod trace_id;
 
+#[cfg(feature = "otel")]
+pub mod otel_config;
+#[cfg(feature = "otel")]
+pub mod otel_context;
+#[cfg(feature = "otel")]
+pub mod otel_guard;
+#[cfg(feature = "otel")]
+pub mod otel_metrics_publisher;
+#[cfg(feature = "otel")]
+pub mod otel_tracer;
+
 pub use counter::Counter;
 pub use duration_histogram::{DURATION_BUCKETS, DurationHistogram};
 pub use duration_timer::DurationTimer;
@@ -32,6 +43,19 @@ pub use trace_context::TraceContext;
 pub use trace_envelope::{ENVELOPE_HEADER_SIZE, TraceEnvelope};
 pub use trace_flags::TraceFlags;
 pub use trace_id::TraceId;
+
+#[cfg(feature = "otel")]
+pub use otel_config::OtelConfig;
+#[cfg(feature = "otel")]
+pub use otel_context::{
+    otel_context_to_trace_context, trace_context_to_otel_context, trace_context_to_span_context,
+};
+#[cfg(feature = "otel")]
+pub use otel_guard::OtelGuard;
+#[cfg(feature = "otel")]
+pub use otel_metrics_publisher::{OtelMetricsPublisher, publish_snapshot_to_otel};
+#[cfg(feature = "otel")]
+pub use otel_tracer::{OtelTracer, init_otel_tracer};
 
 /// Return a static reference to the global Flotilla telemetry metrics registry.
 #[inline(always)]

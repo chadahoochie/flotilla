@@ -57,6 +57,11 @@ impl FlotillaClient for GrpcClient {
             trace_id = %trace.trace_id,
             span_id = %trace.span_id,
         );
+        #[cfg(feature = "otel")]
+        {
+            use tracing_opentelemetry::OpenTelemetrySpanExt;
+            _span.set_parent(crate::telemetry::trace_context_to_otel_context(trace));
+        }
         let _enter = _span.enter();
 
         let mut client = tokio::time::timeout(
