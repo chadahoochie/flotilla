@@ -44,13 +44,32 @@ impl OtelTracer {
         let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
             .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
             .with_sampler(sampler)
-            .with_resource(resource)
+            .with_resource(resource.clone())
             .build();
 
         let tracer = tracer_provider.tracer("flotilla-server");
         opentelemetry::global::set_tracer_provider(tracer_provider);
 
-        Ok((tracer, OtelGuard::new()))
+        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .with_endpoint(&config.endpoint)
+            .build()?;
+
+        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(
+            metric_exporter,
+            opentelemetry_sdk::runtime::Tokio,
+        )
+        .with_interval(std::time::Duration::from_secs(config.metrics_export_interval_secs))
+        .build();
+
+        let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+            .with_reader(reader)
+            .with_resource(resource)
+            .build();
+
+        opentelemetry::global::set_meter_provider(meter_provider.clone());
+
+        Ok((tracer, OtelGuard::with_meter_provider(meter_provider)))
     }
 }
 
