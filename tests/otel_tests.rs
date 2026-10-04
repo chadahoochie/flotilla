@@ -124,3 +124,26 @@ fn test_otel_guard_and_publisher_constructors() {
     let publisher = OtelMetricsPublisher::new(10);
     assert_eq!(publisher.interval_secs, 10);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_init_otel_pipeline_registers_meter_provider() {
+    use flotilla_raft::telemetry::{OtelConfig, init_otel_tracer};
+
+    let config = OtelConfig::new(
+        "http://127.0.0.1:4317".to_string(),
+        "flotilla-test".to_string(),
+        1.0,
+        10,
+        true,
+    );
+
+    let init_res = init_otel_tracer(&config);
+    assert!(init_res.is_ok(), "init_otel_tracer should initialize cleanly: {:?}", init_res.err());
+    let (_tracer, guard) = init_res.unwrap();
+
+    let meter = opentelemetry::global::meter("flotilla-server");
+    let counter = meter.u64_counter("test.counter").build();
+    counter.add(1, &[]);
+
+    drop(guard);
+}

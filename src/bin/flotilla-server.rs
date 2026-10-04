@@ -574,22 +574,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             10
         };
+        let publisher =
+            std::sync::Arc::new(flotilla_raft::telemetry::OtelMetricsPublisher::new(interval_secs));
         tokio::spawn(async move {
             let meter = opentelemetry::global::meter("flotilla-server");
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
             loop {
                 interval.tick().await;
                 let snap = flotilla_raft::telemetry::metrics().snapshot();
-                flotilla_raft::telemetry::publish_snapshot_to_otel(&snap, &meter);
+                publisher.publish(&snap, &meter);
             }
         });
         println!(
             "✓ OpenTelemetry metrics publisher active (every {} s)",
-            if settings.metrics_interval_secs > 0 {
-                settings.metrics_interval_secs
-            } else {
-                10
-            }
+            interval_secs
         );
     }
 
