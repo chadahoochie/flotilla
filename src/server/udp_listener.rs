@@ -8,13 +8,24 @@ use std::net::{SocketAddr, ToSocketAddrs};
 pub struct UdpListener {
     pub driver: UdpDriver,
     pub router: UdpClusterRouter,
+    pub broadcaster: Option<std::sync::Arc<crate::server::CommitBroadcaster>>,
 }
 
 impl UdpListener {
     /// Bind a new UDP listener to the designated address.
     pub fn bind<A: ToSocketAddrs>(addr: A, router: UdpClusterRouter) -> io::Result<Self> {
         let driver = UdpDriver::bind(addr)?;
-        Ok(Self { driver, router })
+        Ok(Self {
+            driver,
+            router,
+            broadcaster: None,
+        })
+    }
+
+    /// Set an optional commit broadcaster to distribute applied entries to subscribers.
+    pub fn with_broadcaster(mut self, broadcaster: std::sync::Arc<crate::server::CommitBroadcaster>) -> Self {
+        self.broadcaster = Some(broadcaster);
+        self
     }
 
     /// Return the local bound socket address.
@@ -38,12 +49,24 @@ impl UdpListener {
                 let sender_id = self.router.peer_id(&src_addr).unwrap_or(NodeId(0));
                 if let Ok(actions) = node.step(sender_id, &buf[..len]) {
                     for act in actions {
-                        if let OutboundMessage::SendPacket { to, packet } = act {
-                            crate::telemetry::metrics().udp_sent.inc();
-                            if let Some(dest_addr) = self.router.peer_addr(to) {
-                                let _ = self.driver.send_to(&packet, dest_addr);
-                            } else if to == sender_id {
-                                let _ = self.driver.send_to(&packet, src_addr);
+                        match act {
+                            OutboundMessage::SendPacket { to, packet } => {
+                                crate::telemetry::metrics().udp_sent.inc();
+                                if let Some(dest_addr) = self.router.peer_addr(to) {
+                                    let _ = self.driver.send_to(&packet, dest_addr);
+                                } else if to == sender_id {
+                                    let _ = self.driver.send_to(&packet, src_addr);
+                                }
+                            }
+                            OutboundMessage::ApplyEntries { from_index, to_index } => {
+                                if let Some(ref broadcaster) = self.broadcaster {
+                                    crate::server::commit_broadcaster::broadcast_applied_entries(
+                                        node,
+                                        broadcaster,
+                                        from_index,
+                                        to_index,
+                                    );
+                                }
                             }
                         }
                     }

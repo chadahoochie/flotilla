@@ -4,7 +4,7 @@
 //! driving a high-throughput, sans-I/O Raft state machine.
 
 use flotilla_raft::engine::{OutboundMessage, RaftConfig, RaftNode};
-use flotilla_raft::server::{GrpcService, TcpListener, UdpListener};
+use flotilla_raft::server::{CommitBroadcaster, GrpcService, TcpListener, UdpListener};
 use flotilla_raft::types::NodeId;
 use flotilla_raft::udp::UdpClusterRouter;
 use parking_lot::Mutex;
@@ -436,16 +436,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         heartbeat_interval_ticks: settings.heartbeat_interval_ticks,
     };
 
-    let node = Arc::new(Mutex::new(RaftNode::<1024, 1024>::new(raft_config)));
+    let node = Arc::new(Mutex::new(RaftNode::<1024, 65_536>::new(raft_config)));
+
+    // 0. Initialize Shared Commit Broadcaster
+    let broadcaster = Arc::new(CommitBroadcaster::new(10_000));
 
     // 1. Initialize UDP Listener
-    let udp_listener = Arc::new(UdpListener::bind(settings.udp_addr, router)?);
+    let udp_listener = Arc::new(
+        UdpListener::bind(settings.udp_addr, router)?
+            .with_broadcaster(Arc::clone(&broadcaster)),
+    );
     let _ = udp_listener.driver.set_nonblocking(true);
     let udp_driver_clone = Arc::clone(&udp_listener);
     let node_udp = Arc::clone(&node);
 
     tokio::spawn(async move {
-        let mut buf = [0u8; 1500];
+        let mut buf = vec![0u8; 65_536 + 1024];
         loop {
             let res = {
                 let mut locked = node_udp.lock();
@@ -465,7 +471,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ UDP transport listening on {}", settings.udp_addr);
 
     // 2. Initialize TCP Listener
-    let _tcp = TcpListener::bind(settings.tcp_addr, Arc::clone(&node)).await?;
+    let _tcp = TcpListener::bind_with_options(
+        settings.tcp_addr,
+        Arc::clone(&node),
+        Arc::clone(&broadcaster),
+        Some(Arc::clone(&udp_listener)),
+    )
+    .await?;
     println!("✓ TCP transport listening on {}", settings.tcp_addr);
 
     // 3. Initialize gRPC Service

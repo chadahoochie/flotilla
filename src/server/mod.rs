@@ -6,6 +6,9 @@ pub mod server_error;
 pub use server_config::ServerConfig;
 pub use server_error::ServerError;
 
+pub mod commit_broadcaster;
+pub use commit_broadcaster::CommitBroadcaster;
+
 pub mod udp_listener;
 pub use udp_listener::UdpListener;
 

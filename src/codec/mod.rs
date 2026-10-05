@@ -10,7 +10,7 @@ use crate::message::{
     AppendEntriesHeader, AppendEntriesReply, ClientProposalReply, MsgType, RequestVoteArgs,
     RequestVoteReply,
 };
-use crate::types::{NodeId, Term};
+use crate::types::{LogIndex, NodeId, Term};
 use crc32fast::Hasher;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -264,5 +264,41 @@ pub fn encode_client_proposal_reply(
 
     encode_packet_header(buf, &header)?;
     buf[HEADER_SIZE..total_len].copy_from_slice(payload_bytes);
+    Ok(total_len)
+}
+
+/// Encode an AppendEntriesArgs commit frame for TCP subscribers.
+///
+/// The payload consists of an 8-byte LE LogIndex, 8-byte LE Term, followed by the entry's payload bytes.
+pub fn encode_subscriber_commit_frame(
+    buf: &mut [u8],
+    sender: NodeId,
+    term: Term,
+    log_index: LogIndex,
+    entry_payload: &[u8],
+) -> Result<usize, CodecError> {
+    let payload_len = 16 + entry_payload.len();
+    let total_len = HEADER_SIZE + payload_len;
+    if buf.len() < total_len {
+        return Err(CodecError::BufferTooSmall);
+    }
+
+    buf[HEADER_SIZE..HEADER_SIZE + 8].copy_from_slice(&log_index.0.to_le_bytes());
+    buf[HEADER_SIZE + 8..HEADER_SIZE + 16].copy_from_slice(&term.0.to_le_bytes());
+    buf[HEADER_SIZE + 16..total_len].copy_from_slice(entry_payload);
+
+    let checksum = calculate_crc32(&buf[HEADER_SIZE..total_len]);
+    let header = PacketHeader {
+        magic: MAGIC,
+        version: PROTOCOL_VERSION,
+        msg_type: MsgType::AppendEntriesArgs as u16,
+        sender_id: sender,
+        receiver_id: NodeId(0),
+        term,
+        checksum,
+        payload_len: payload_len as u32,
+    };
+
+    encode_packet_header(buf, &header)?;
     Ok(total_len)
 }

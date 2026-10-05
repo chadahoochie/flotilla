@@ -333,6 +333,15 @@ impl<const CAPACITY: usize, const MAX_PAYLOAD: usize> RaftNode<CAPACITY, MAX_PAY
                 let reply_packet = if self.role() == Role::Leader {
                     let new_index = self.storage.append_entry(self.current_term(), payload)?;
                     actions.extend(self.broadcast_heartbeats());
+                    if self.peers.is_empty() {
+                        let old_commit = self.commit_index;
+                        self.commit_index = new_index;
+                        actions.push(OutboundMessage::ApplyEntries {
+                            from_index: old_commit.next(),
+                            to_index: new_index,
+                        });
+                        self.last_applied = new_index;
+                    }
                     create_client_proposal_reply_packet(
                         self.election.config.node_id,
                         sender,

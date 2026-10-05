@@ -144,3 +144,32 @@ fn test_corrupted_checksum_fails() {
         "Corrupted payload must fail checksum verification"
     );
 }
+
+#[test]
+fn test_subscriber_commit_frame_roundtrip() {
+    let mut buf = [0u8; 128];
+    let written = flotilla_raft::codec::encode_subscriber_commit_frame(
+        &mut buf,
+        NodeId(1),
+        Term(2),
+        LogIndex(10),
+        b"hello_subscriber",
+    )
+    .expect("Encode subscriber commit frame");
+
+    let (header, payload) = decode_packet(&buf[..written]).expect("Decode packet");
+    assert_eq!(header.magic, MAGIC);
+    assert_eq!(header.version, PROTOCOL_VERSION);
+    assert_eq!(header.msg_type, MsgType::AppendEntriesArgs as u16);
+    assert_eq!(header.sender_id, NodeId(1));
+    assert_eq!(header.receiver_id, NodeId(0));
+    assert_eq!(header.term, Term(2));
+    assert!(verify_checksum(&header, payload));
+
+    assert_eq!(payload.len(), 16 + b"hello_subscriber".len());
+    let log_idx = u64::from_le_bytes(payload[..8].try_into().unwrap());
+    let term_val = u64::from_le_bytes(payload[8..16].try_into().unwrap());
+    assert_eq!(log_idx, 10);
+    assert_eq!(term_val, 2);
+    assert_eq!(&payload[16..], b"hello_subscriber");
+}

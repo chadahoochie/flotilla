@@ -118,3 +118,23 @@ pub fn create_client_proposal_reply_packet(
     let len = encode_client_proposal_reply(&mut buf, sender, receiver, term, &reply)?;
     Ok(buf[..len].to_vec())
 }
+
+/// Standalone pure constructor for subscriber commit packet envelopes.
+pub fn create_subscriber_commit_packet(
+    sender: NodeId,
+    term: Term,
+    log_index: LogIndex,
+    entry_payload: &[u8],
+) -> Result<Vec<u8>, CodecError> {
+    let total_needed = HEADER_SIZE + 16 + entry_payload.len();
+    let mut buf = vec![0u8; total_needed];
+    let len = crate::codec::encode_subscriber_commit_frame(
+        &mut buf,
+        sender,
+        term,
+        log_index,
+        entry_payload,
+    )?;
+    buf.truncate(len);
+    Ok(buf)
+}
